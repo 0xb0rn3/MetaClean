@@ -2,6 +2,7 @@ import os
 import sys
 import tempfile
 import unittest
+from unittest import mock
 from unittest.mock import patch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
@@ -53,6 +54,47 @@ class PlatformAndHostTests(unittest.TestCase):
             environ_overrides={"REMOTE_ADDR": "8.8.8.8"},
         )
         self.assertEqual(response.status_code, 403)
+
+    def test_server_listener_is_available_on_all_network_interfaces(self):
+        self.assertEqual(metaclean.BIND_HOST, "0.0.0.0")
+
+    def test_host_status_builds_share_link_for_detected_lan_ip(self):
+        with metaclean.HOSTING_LOCK:
+            metaclean.HOSTING.update(enabled=True, token="lan-secret")
+        with mock.patch.object(metaclean, "lan_ipv4_addresses", return_value=["192.168.1.44"]):
+            status = metaclean.host_status()
+        self.assertEqual(
+            status["urls"],
+            ["http://192.168.1.44:5000/remote?access=lan-secret"],
+        )
+
+    def test_termux_host_toggle_requests_and_releases_android_wake_lock(self):
+        previous = metaclean.IS_TERMUX
+        try:
+            metaclean.IS_TERMUX = True
+            with mock.patch.object(
+                metaclean, "set_termux_wake_lock",
+                side_effect=[
+                    {"ok": True, "message": "Android wake lock active."},
+                    {"ok": True, "message": "Android wake lock released."},
+                ],
+            ) as wake_lock:
+                headers = {"X-MC-Token": metaclean.TOKEN}
+                started = self.client.post(
+                    "/api/host", json={"enabled": True}, headers=headers
+                )
+                self.assertEqual(started.status_code, 200)
+                self.assertTrue(started.get_json()["host"]["enabled"])
+                self.assertTrue(started.get_json()["host"]["wake_lock"]["ok"])
+
+                stopped = self.client.post(
+                    "/api/host", json={"enabled": False}, headers=headers
+                )
+                self.assertEqual(stopped.status_code, 200)
+                self.assertFalse(stopped.get_json()["host"]["enabled"])
+                self.assertEqual(wake_lock.call_args_list, [mock.call(True), mock.call(False)])
+        finally:
+            metaclean.IS_TERMUX = previous
 
     def test_termux_disables_mat2_and_uses_native_fallback_plan(self):
         old_termux = metaclean.IS_TERMUX
