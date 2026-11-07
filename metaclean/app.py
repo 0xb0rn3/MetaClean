@@ -4,34 +4,51 @@
 import errno
 import hashlib
 import hmac
+import ipaddress
 import json
 import mimetypes
 import os
+import platform
 import re
 import secrets
 import shutil
+import socket
 import subprocess
+import sys
 import tempfile
 import threading
 import time
 import uuid
 import zipfile
 from concurrent.futures import ThreadPoolExecutor
+from urllib.parse import urlsplit
 
 from flask import Flask, jsonify, render_template, request, send_file
 from werkzeug.exceptions import HTTPException
+from werkzeug.utils import secure_filename
 
 # ---------------------------------------------------------------- configuration
 
-HOST = "127.0.0.1"
+BIND_HOST = "0.0.0.0"  # Network socket is guarded; LAN access remains disabled until Host is enabled.
 PORT = int(os.environ.get("MCLEAN_PORT", "5000"))
-ROOT = os.path.abspath(os.path.expanduser(os.environ.get("MCLEAN_ROOT", "~/storage/shared")))
+IS_TERMUX = bool(os.environ.get("PREFIX", "").startswith("/data/data/com.termux")) or "com.termux" in sys.executable.lower()
+IS_WINDOWS = os.name == "nt"
+IS_LINUX = sys.platform.startswith("linux") and not IS_TERMUX
+PLATFORM_NAME = "Termux" if IS_TERMUX else ("Windows" if IS_WINDOWS else ("Linux" if IS_LINUX else platform.system()))
+DEFAULT_ROOT = "~/storage/shared" if IS_TERMUX else "~/MetaClean/Files"
+ROOT = os.path.abspath(os.path.expanduser(os.environ.get("MCLEAN_ROOT", DEFAULT_ROOT)))
 ROOT_REAL = os.path.realpath(ROOT)
-WORK_BASE = os.environ.get("MCLEAN_TMP") or tempfile.gettempdir()
-DATA_DIR = os.path.abspath(os.path.expanduser(os.environ.get("MCLEAN_DATA", "~/.cache/metaclean")))
+WORK_BASE = os.path.abspath(os.path.expanduser(os.environ.get("MCLEAN_TMP") or tempfile.gettempdir()))
+if IS_WINDOWS:
+    _data_home = os.environ.get("LOCALAPPDATA") or os.path.expanduser("~")
+    DEFAULT_DATA = os.path.join(_data_home, "MetaClean", "Data")
+else:
+    DEFAULT_DATA = "~/.cache/metaclean"
+DATA_DIR = os.path.abspath(os.path.expanduser(os.environ.get("MCLEAN_DATA", DEFAULT_DATA)))
 THUMB_DIR = os.path.join(DATA_DIR, "thumbs")
 TOKEN = secrets.token_urlsafe(24)
-ALLOWED_HOSTS = {f"127.0.0.1:{PORT}", f"localhost:{PORT}", "127.0.0.1", "localhost"}
+MAX_REMOTE_FILES = 25
+MAX_UPLOAD_BYTES = 1024 * 1024 * 1024
 
 CLEAN_MARK = ".cleaned"
 ENGINES = ("auto", "mat2", "exiftool", "both")
@@ -72,8 +89,11 @@ for _ext, _mime in {
 
 app = Flask(__name__)
 app.json.sort_keys = False
+app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_BYTES
 POOL = ThreadPoolExecutor(max_workers=3, thread_name_prefix="job")
 CLEAN_LOCK = threading.Lock()
+HOSTING = {"enabled": False, "token": ""}
+HOSTING_LOCK = threading.RLock()
 
 
 class ApiError(Exception):
@@ -209,6 +229,12 @@ def tools(force=False):
             return _TOOLS["data"]
         data = {}
         for name, args in _PROBES.items():
+            if name == "mat2" and IS_TERMUX:
+                data[name] = {
+                    "available": False, "version": "",
+                    "error": "intentionally disabled on Termux; use ExifTool and FFmpeg",
+                }
+                continue
             path = shutil.which(name)
             info = {"available": False, "version": "", "error": "not installed"}
             if path:
@@ -851,7 +877,7 @@ def run_scan_job(job, include_hidden):
         finish_job(job, "failed", explain(exc))
 
 
-def run_clean_job(job, paths, mode, engine, notify):
+def run_clean_job(job, paths, mode, engine, notify, delete_original=False):
     try:
         with CLEAN_LOCK:
             job["status"] = "running"
@@ -866,6 +892,17 @@ def run_clean_job(job, paths, mode, engine, notify):
                     res = clean_one(rel, mode, engine, T)
                     if res.get("dest"):
                         written.append(res.pop("dest"))
+                    if res.get("status") == "ok" and delete_original and mode == "copy":
+                        try:
+                            original = resolve(rel)
+                            os.remove(original)
+                            index_remove(rel)
+                            res["original_deleted"] = True
+                        except Exception as delete_exc:
+                            res["original_deleted"] = False
+                            res.setdefault("notes", []).append(
+                                "Cleaned copy was created, but the original could not be deleted: " + explain(delete_exc)
+                            )
                 except Exception as exc:
                     if not isinstance(exc, (ApiError, ToolError, OSError)):
                         app.logger.exception("clean failed for %s", rel)
@@ -877,7 +914,10 @@ def run_clean_job(job, paths, mode, engine, notify):
             media_scan(written)
         ok = sum(1 for r in job["results"] if r["status"] == "ok")
         warned = sum(1 for r in job["results"] if r["status"] == "ok" and r.get("residual"))
+        deleted_originals = sum(1 for r in job["results"] if r.get("original_deleted"))
         summary = f"{ok} cleaned, {job['failed']} failed"
+        if deleted_originals:
+            summary += f", {deleted_originals} originals deleted after cleanup"
         if warned:
             summary += f", {warned} with leftover tags"
         if job["_cancel"].is_set():
@@ -987,10 +1027,47 @@ def make_thumb(full, ftype):
 # ---------------------------------------------------------------- request guards
 
 @app.before_request
+def valid_host_header():
+    try:
+        hostname = urlsplit("//" + (request.host or "")).hostname
+        if not hostname:
+            return False
+        if hostname.lower() in ("localhost", socket.gethostname().lower()):
+            return True
+        address = ipaddress.ip_address(hostname)
+        return address.is_private or address.is_loopback
+    except ValueError:
+        return False
+
+
 def guard():
-    host = (request.host or "").lower()
-    if host not in ALLOWED_HOSTS:
+    if not valid_host_header():
         return jsonify(error="bad_host", message="Unexpected Host header."), 403
+    try:
+        client = ipaddress.ip_address(request.remote_addr or "")
+        local_client = client.is_loopback
+    except ValueError:
+        client = None
+        local_client = False
+
+    if not local_client:
+        with HOSTING_LOCK:
+            enabled = HOSTING["enabled"]
+            host_token = HOSTING["token"]
+        client_private = bool(client and client.is_private and not client.is_link_local)
+        if not enabled or not client_private or request.path not in ("/remote", "/remote/clean"):
+            return jsonify(error="host_disabled", message="Remote access is disabled or this is not a private LAN client."), 403
+        supplied = request.args.get("access", "")
+        if not hmac.compare_digest(supplied.encode("utf-8"), host_token.encode("utf-8")):
+            return jsonify(error="host_access_denied", message="This sharing link is invalid or has expired."), 403
+        if request.method not in ("GET", "POST"):
+            return jsonify(error="method_not_allowed", message="Method not allowed."), 405
+        if request.path == "/remote/clean" and request.method != "POST":
+            return jsonify(error="method_not_allowed", message="Method not allowed."), 405
+        if request.path == "/remote/clean" and request.mimetype != "multipart/form-data":
+            return jsonify(error="bad_content_type", message="Upload must use multipart/form-data."), 415
+        return None
+
     if request.path.startswith("/api/"):
         supplied = request.headers.get("X-MC-Token") or request.args.get("t", "")
         if not hmac.compare_digest(supplied.encode("utf-8"), TOKEN.encode("utf-8")):
@@ -1043,6 +1120,115 @@ def index():
     return render_template("index.html", token=TOKEN)
 
 
+def lan_ipv4_addresses():
+    found = set()
+    try:
+        for item in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET):
+            ip = item[4][0]
+            addr = ipaddress.ip_address(ip)
+            if addr.is_private and not addr.is_loopback and not addr.is_link_local:
+                found.add(ip)
+    except OSError:
+        pass
+    # UDP connect selects the active network route without sending payload data.
+    probe = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        probe.connect(("192.0.2.1", 9))
+        ip = probe.getsockname()[0]
+        addr = ipaddress.ip_address(ip)
+        if addr.is_private and not addr.is_loopback and not addr.is_link_local:
+            found.add(ip)
+    except OSError:
+        pass
+    finally:
+        probe.close()
+    return sorted(found)
+
+
+def host_status():
+    with HOSTING_LOCK:
+        enabled = HOSTING["enabled"]
+        key = HOSTING["token"]
+    urls = [f"http://{ip}:{PORT}/remote?access={key}" for ip in lan_ipv4_addresses()] if enabled else []
+    return {"enabled": enabled, "urls": urls, "scope": "private local network only"}
+
+
+@app.get("/remote")
+def remote_portal():
+    with HOSTING_LOCK:
+        enabled = HOSTING["enabled"]
+        key = HOSTING["token"]
+    access = request.args.get("access", "")
+    if not enabled or not hmac.compare_digest(access.encode("utf-8"), key.encode("utf-8")):
+        raise ApiError("Host sharing is disabled or this link has expired.", 403, "host_access_denied")
+    return render_template("remote.html", access=access, max_files=MAX_REMOTE_FILES, max_mb=MAX_UPLOAD_BYTES // (1024 * 1024))
+
+
+@app.post("/remote/clean")
+def remote_clean():
+    with HOSTING_LOCK:
+        enabled = HOSTING["enabled"]
+        key = HOSTING["token"]
+    if not enabled or not hmac.compare_digest(request.args.get("access", "").encode("utf-8"), key.encode("utf-8")):
+        raise ApiError("Host sharing is disabled or this link has expired.", 403, "host_access_denied")
+
+    uploads = [item for item in request.files.getlist("files") if item and item.filename]
+    if not uploads:
+        raise ApiError("Choose at least one file to clean.", 400, "no_uploads")
+    if len(uploads) > MAX_REMOTE_FILES:
+        raise ApiError(f"Upload no more than {MAX_REMOTE_FILES} files at once.", 400, "too_many_uploads")
+    engine = request.form.get("engine", "auto")
+    if engine not in ENGINES:
+        raise ApiError("Invalid cleaning engine.", 400, "bad_engine")
+
+    os.makedirs(WORK_BASE, exist_ok=True)
+    temp_dir = tempfile.mkdtemp(prefix="metaclean-remote-", dir=WORK_BASE)
+    outputs = []
+    T = tools()
+    try:
+        for number, upload in enumerate(uploads, 1):
+            safe_name = secure_filename(os.path.basename(upload.filename)) or f"upload-{number}"
+            ext = os.path.splitext(safe_name)[1].lower()
+            ftype = EXT_TYPE.get(ext)
+            if not ftype:
+                raise ApiError(f"{safe_name}: no safe cleaner is registered for this file type.", 415, "unsupported_type")
+            source = os.path.join(temp_dir, f"input-{number}{ext}")
+            upload.save(source)
+            if not _usable(source):
+                raise ApiError(f"{safe_name}: file is empty or could not be saved.", 400, "empty_upload")
+            plan = plan_for(ftype, ext, engine, T)
+            check_plan(plan, ext, T)
+            work = tempfile.mkdtemp(prefix=f"work-{number}-", dir=temp_dir)
+            try:
+                current = source
+                notes = []
+                for step_index, step_name in enumerate(plan):
+                    current = STEPS[step_name](current, work, ext, ftype, step_index, notes)
+                output_name = f"{number:02d}_{os.path.splitext(safe_name)[0]}.cleaned{ext}"
+                output_path = os.path.join(temp_dir, output_name)
+                shutil.copyfile(current, output_path)
+                residual = verify(output_path, T)
+                outputs.append((output_path, output_name, {
+                    "original": safe_name, "engines": plan, "notes": notes,
+                    "verified": residual is not None, "residual": residual or [],
+                }))
+            finally:
+                shutil.rmtree(work, ignore_errors=True)
+
+        archive_path = os.path.join(temp_dir, "MetaClean-cleaned.zip")
+        with zipfile.ZipFile(archive_path, "w", zipfile.ZIP_DEFLATED) as archive:
+            for output_path, output_name, _info in outputs:
+                archive.write(output_path, arcname=output_name)
+        response = send_file(archive_path, mimetype="application/zip", as_attachment=True, download_name="MetaClean-cleaned.zip", max_age=0)
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+        response.headers["Pragma"] = "no-cache"
+        response.call_on_close(lambda: shutil.rmtree(temp_dir, ignore_errors=True))
+        return response
+    except Exception:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+        raise
+
+
 @app.get("/api/status")
 def api_status():
     T = tools(force=request.args.get("refresh") == "1")
@@ -1058,7 +1244,7 @@ def api_status():
         banners.append(
             {"level": "error", "text": f"exiftool is unavailable ({T['exiftool']['error']}). Install it with: pkg install exiftool"}
         )
-    if not T["mat2"]["available"]:
+    if not T["mat2"]["available"] and not IS_TERMUX:
         banners.append(
             {
                 "level": "warn",
@@ -1076,6 +1262,8 @@ def api_status():
     return jsonify(
         root=ROOT,
         port=PORT,
+        platform={"name": PLATFORM_NAME, "termux": IS_TERMUX, "windows": IS_WINDOWS, "linux": IS_LINUX},
+        host=host_status(),
         storage=st,
         tools=T,
         banners=banners,
@@ -1243,8 +1431,11 @@ def api_clean():
         raise ApiError(state["reason"], 503, "storage_unavailable")
     if not state["writable"]:
         raise ApiError("Shared storage is read-only for Termux.", 403, "read_only")
+    delete_original = bool(body.get("delete_original", False))
+    if delete_original and mode != "copy":
+        raise ApiError("Delete original after cleanup is only available when saving a cleaned copy.", 400, "bad_delete_original_mode")
     job = new_job("clean", len(paths))
-    POOL.submit(run_clean_job, job, paths, mode, engine, bool(body.get("notify", True)))
+    POOL.submit(run_clean_job, job, paths, mode, engine, bool(body.get("notify", True)), delete_original)
     return jsonify(job_id=job["id"])
 
 
@@ -1353,6 +1544,20 @@ def api_run_all():
     return jsonify(job_id=job["id"], reused=False)
 
 
+@app.post("/api/host")
+def api_host():
+    body = request.get_json(silent=True) or {}
+    enabled = bool(body.get("enabled"))
+    with HOSTING_LOCK:
+        if enabled:
+            HOSTING["enabled"] = True
+            HOSTING["token"] = secrets.token_urlsafe(32)
+        else:
+            HOSTING["enabled"] = False
+            HOSTING["token"] = ""
+    return jsonify(host=host_status())
+
+
 @app.post("/api/monitor")
 def api_monitor():
     body = request.get_json(silent=True) or {}
@@ -1408,6 +1613,8 @@ def api_job_cancel(job_id):
 
 def main():
     os.makedirs(DATA_DIR, exist_ok=True)
+    os.makedirs(ROOT, exist_ok=True)
+    os.makedirs(WORK_BASE, exist_ok=True)
     found = tools(force=True)
     try:
         with open(MONITOR_CONFIG, "r", encoding="utf-8") as handle:
@@ -1423,14 +1630,14 @@ def main():
     for name, info in found.items():
         state = info["version"] or "ok" if info["available"] else f"missing ({info['error']})"
         print(f"  {name:<20} {state}")
-    print(f"Listening on http://{HOST}:{PORT}")
+    print(f"Listening on http://127.0.0.1:{PORT} (LAN host mode is opt-in)")
     try:
         from waitress import serve
     except ImportError:
-        app.run(host=HOST, port=PORT, threaded=True)
+        app.run(host=BIND_HOST, port=PORT, threaded=True)
         return
     try:
-        serve(app, host=HOST, port=PORT, threads=8, ident="metaclean")
+        serve(app, host=BIND_HOST, port=PORT, threads=8, ident="metaclean")
     except OSError as exc:
         print(f"Cannot start server on port {PORT}: {exc.strerror or exc}")
         raise SystemExit(1)
