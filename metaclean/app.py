@@ -1153,6 +1153,37 @@ def host_status():
     return {"enabled": enabled, "urls": urls, "scope": "private local network only"}
 
 
+def cleanup_stale_remote_temp():
+    """Remove abandoned upload workspaces left by an earlier stopped/crashed process."""
+    try:
+        names = os.listdir(WORK_BASE)
+    except OSError:
+        return
+    for name in names:
+        if not name.startswith("metaclean-remote-"):
+            continue
+        folder = os.path.join(WORK_BASE, name)
+        if not os.path.isdir(folder):
+            continue
+        owner_file = os.path.join(folder, ".metaclean-owner")
+        try:
+            with open(owner_file, "r", encoding="ascii") as handle:
+                owner_pid = int(handle.read().strip())
+        except (OSError, ValueError):
+            shutil.rmtree(folder, ignore_errors=True)
+            continue
+        if owner_pid == os.getpid():
+            continue
+        try:
+            os.kill(owner_pid, 0)
+        except ProcessLookupError:
+            shutil.rmtree(folder, ignore_errors=True)
+        except PermissionError:
+            continue
+        except OSError:
+            shutil.rmtree(folder, ignore_errors=True)
+
+
 @app.get("/remote")
 def remote_portal():
     with HOSTING_LOCK:
@@ -1183,6 +1214,8 @@ def remote_clean():
 
     os.makedirs(WORK_BASE, exist_ok=True)
     temp_dir = tempfile.mkdtemp(prefix="metaclean-remote-", dir=WORK_BASE)
+    with open(os.path.join(temp_dir, ".metaclean-owner"), "w", encoding="ascii") as owner:
+        owner.write(str(os.getpid()))
     outputs = []
     T = tools()
     try:
@@ -1615,6 +1648,7 @@ def main():
     os.makedirs(DATA_DIR, exist_ok=True)
     os.makedirs(ROOT, exist_ok=True)
     os.makedirs(WORK_BASE, exist_ok=True)
+    cleanup_stale_remote_temp()
     found = tools(force=True)
     try:
         with open(MONITOR_CONFIG, "r", encoding="utf-8") as handle:
