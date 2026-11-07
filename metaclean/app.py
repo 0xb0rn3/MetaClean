@@ -1127,7 +1127,7 @@ def api_files():
     if args.get("ids") == "1":
         sel = [
             {"rel": e["rel"], "name": e["name"], "size": e["size"], "twin": e["twin"], "cleaned": e["cleaned"]}
-            for e in chosen
+            for e in chosen if e["supported"]
         ]
         return jsonify(sel=sel)
     return jsonify(
