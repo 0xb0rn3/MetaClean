@@ -1476,7 +1476,7 @@ def api_clean():
     return jsonify(job_id=job["id"])
 
 
-def run_all_job(job, include_hidden, notify=True):
+def run_all_job(job, include_hidden, notify=True, delete_original=False):
     """Inventory all accessible files, then clean every supported original as copies."""
     try:
         scan = new_job("scan")
@@ -1494,7 +1494,7 @@ def run_all_job(job, include_hidden, notify=True):
             if notify and IS_TERMUX:
                 job["notify_status"] = send_notification("MetaClean finished", job["message"], job["id"])
             return
-        run_clean_job(job, paths, "copy", "auto", notify)
+        run_clean_job(job, paths, "copy", "auto", notify, delete_original)
     except Exception as exc:
         app.logger.exception("run-all job failed")
         finish_job(job, "failed", explain(exc))
@@ -1576,8 +1576,9 @@ def api_run_all():
         for existing in JOBS.values():
             if existing["kind"] == "run-all" and existing["status"] in ("queued", "running"):
                 return jsonify(job_id=existing["id"], reused=True)
+    delete_original = bool(body.get("delete_original", False))
     job = new_job("run-all")
-    POOL.submit(run_all_job, job, bool(body.get("include_hidden", True)), bool(body.get("notify", True)))
+    POOL.submit(run_all_job, job, bool(body.get("include_hidden", True)), bool(body.get("notify", True)), delete_original)
     return jsonify(job_id=job["id"], reused=False)
 
 
