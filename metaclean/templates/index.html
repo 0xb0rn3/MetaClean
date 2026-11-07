@@ -352,9 +352,10 @@ dialog::backdrop{background:rgba(5,8,12,.62)}
     let badge = '';
     if (it.cleaned) badge = '<span class="bd">cleaned copy</span>';
     else if (it.twin) badge = '<span class="bd">has cleaned copy</span>';
+    else if (!it.supported) badge = '<span class="bd">view only · cleaner unavailable</span>';
     return '<article class="card' + (on ? ' sel' : '') + '" data-rel="' + esc(it.rel) + '">' +
       '<div class="thumb"><span class="ico">' + ICON[it.type] + '</span>' + thumb +
-      '<label class="pick"><input type="checkbox"' + (on ? ' checked' : '') + ' aria-label="Select ' + esc(it.name) + '"></label>' +
+      '<label class="pick"><input type="checkbox"' + (on ? ' checked' : '') + (!it.supported ? ' disabled title="Detected for browsing; this format has no safe cleaner"' : '') + ' aria-label="Select ' + esc(it.name) + '"></label>' +
       '<span class="ext">' + esc(it.ext.slice(1)) + '</span></div>' +
       '<div class="info"><div class="nm" title="' + esc(it.rel) + '">' + esc(it.name) + '</div>' +
       '<div class="sub">' + esc(it.dir || '/') + '</div>' +
@@ -362,7 +363,7 @@ dialog::backdrop{background:rgba(5,8,12,.62)}
   }
 
   function renderChips() {
-    const defs = [['all', 'All'], ['image', 'Images'], ['video', 'Videos'], ['audio', 'Audio'], ['document', 'Docs'], ['other', 'Other']];
+    const defs = [['all', 'Media & docs'], ['image', 'Images'], ['video', 'Videos'], ['audio', 'Audio'], ['document', 'Docs'], ['other', 'Other files']];
     $('#chips').innerHTML = defs.map(([k, label]) =>
       '<button type="button" class="chip' + (S.type === k ? ' on' : '') + '" data-type="' + k + '">' + label + '<b>' + (S.counts[k] || 0).toLocaleString() + '</b></button>').join('');
   }
