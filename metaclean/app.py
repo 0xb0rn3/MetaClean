@@ -933,6 +933,7 @@ def run_duplicate_scan_job(job, include_hidden=True, notify=True):
                                     "mtime": st.st_mtime,
                                     "mtime_ns": st.st_mtime_ns,
                                     "inode": getattr(st, "st_ino", None),
+                                    "device": getattr(st, "st_dev", None),
                                 })
                                 scanned += 1
                                 job["found"] = scanned
@@ -971,6 +972,7 @@ def run_duplicate_scan_job(job, include_hidden=True, notify=True):
                     before.st_size != after.st_size
                     or before.st_mtime_ns != after.st_mtime_ns
                     or getattr(before, "st_ino", None) != getattr(after, "st_ino", None)
+                    or getattr(before, "st_dev", None) != getattr(after, "st_dev", None)
                 ):
                     job["failed"] += 1
                     continue
@@ -979,6 +981,8 @@ def run_duplicate_scan_job(job, include_hidden=True, notify=True):
                     "name": os.path.basename(item["rel"]),
                     "size": item["size"],
                     "mtime": item["mtime"],
+                    "inode": getattr(after, "st_ino", None),
+                    "device": getattr(after, "st_dev", None),
                 }
                 hashes.setdefault((item["size"], digest), []).append(record)
             except (OSError, PermissionError):
@@ -988,15 +992,26 @@ def run_duplicate_scan_job(job, include_hidden=True, notify=True):
 
         groups = []
         for (size, digest), files in hashes.items():
+            # Two paths to one inode are hard links, not separate duplicate data.
+            physical_files = {}
+            for entry in files:
+                inode = entry.get("inode")
+                identity = (entry.get("device"), inode) if inode else ("path", entry["rel"])
+                physical_files.setdefault(identity, entry)
+            files = list(physical_files.values())
             if len(files) < 2:
                 continue
             files.sort(key=lambda entry: (entry["mtime"], entry["rel"].lower()))
+            public_files = [
+                {key: entry[key] for key in ("rel", "name", "size", "mtime")}
+                for entry in files
+            ]
             groups.append({
                 "hash": digest,
                 "size": size,
-                "files": files,
-                "copies": len(files),
-                "wasted_bytes": size * (len(files) - 1),
+                "files": public_files,
+                "copies": len(public_files),
+                "wasted_bytes": size * (len(public_files) - 1),
             })
         groups.sort(key=lambda group: (-group["wasted_bytes"], -group["size"], group["hash"]))
         duplicate_files = sum(group["copies"] for group in groups)
@@ -1076,6 +1091,8 @@ def run_duplicate_delete_job(job, selections, report):
                     rel = item["rel"]
                     job["current"] = rel
                     try:
+                        if sha256_file(keep_full) != expected_hash:
+                            raise ApiError("The selected keeper changed during removal. Remaining copies in this group were retained.")
                         full = resolve(rel)
                         current_stat = os.stat(full, follow_symlinks=False)
                         if current_stat.st_size != group["size"] or sha256_file(full) != expected_hash:
