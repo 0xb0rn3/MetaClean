@@ -135,6 +135,7 @@ For a direct-curl or ZIP installation, download and extract the newest archive a
 - **RUN ALL** scans storage and sanitizes supported originals into adjacent `.cleaned` copies.
 - Optional **Delete original after successful cleanup** removes a source only after its cleaned copy has been created successfully. It applies to manually selected cleaning and **RUN ALL**, is off by default, works only in copy mode, and is not secure erasure.
 - Optional **Host for devices on your local network** turns the computer or Termux device into a processing server. Another device opens a generated link, uploads supported files, and downloads a ZIP cleaned by the host's CPU and installed tools.
+- Termux uses the same all-interface server listener, token-protected upload portal and temporary-file processing path as Linux and Windows. While Termux Host mode is enabled, MetaClean requests an Android wake lock through Termux:API and releases it when hosting is stopped.
 - Remote uploads and outputs use a temporary host directory and are removed when the download response closes. Remote source files are never written into the host's normal inventory and the source on the uploading device is not changed.
 - Optional monitoring detects new or changed supported files and sanitizes them into copies while the MetaClean service is running.
 - Optional replacement mode retains a backup before replacing an original.
@@ -166,6 +167,7 @@ Actual cleaning coverage depends on installed tools and each format's support. U
 - Android's protected `Android/data` and `Android/obb` directories are excluded; ordinary Termux shared-storage permission does not grant access to them.
 - The server's network listener is guarded: the normal dashboard and API remain loopback-only; the separate upload portal accepts private-LAN clients only while Host mode is enabled and only with its generated bearer link.
 - Host mode is intended for a trusted Wi-Fi/LAN. Do not port-forward TCP 5000 or expose the host to the public internet. Stop hosting to revoke the current link.
+- On Termux, install the separate Termux:API Android app from the same source as the Termux app; the `termux-api` package alone does not install that Android companion. Host mode displays whether the wake-lock request succeeded. The lock uses additional battery power, and Android vendor battery controls or Wi-Fi changes can still interrupt service. Keep the phone on the same Wi-Fi network as clients and stop hosting when finished.
 - A remote upload is temporarily written to the host's system temp directory for processing and download. Normal completion removes the temporary workspace when the response closes; an abrupt power loss or process kill can interrupt that cleanup.
 - Automatic cleaning uses copy mode. Review outputs before sharing or deleting originals.
 - Metadata removal is format-specific. A clean verification scan is not proof that every possible embedded provenance structure has been removed.
