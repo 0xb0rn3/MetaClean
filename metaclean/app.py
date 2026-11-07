@@ -959,9 +959,8 @@ def run_duplicate_scan_job(job, include_hidden=True, notify=True):
             full = os.path.join(ROOT, item["rel"])
             try:
                 before = os.stat(full, follow_symlinks=False)
-                if not os.path.isfile(full) or before.st_size != item["size"]:
+                if os.path.islink(full) or not os.path.isfile(full) or before.st_size != item["size"]:
                     job["failed"] += 1
-                    job["done"] += 1
                     continue
                 digest = sha256_file(full, job["_cancel"])
                 if digest is None:
