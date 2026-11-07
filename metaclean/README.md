@@ -94,6 +94,14 @@ The dashboard's **Media & docs** view prioritises recognised user content rather
 - **Automatic monitoring** watches supported file signatures while MetaClean's server process is running. It cleans new or changed supported files into adjacent `.cleaned` copies. The preference persists and resumes the next time the service starts.
 - Individual inspection and cleaning remain available from file cards. Manual replace mode must be used cautiously; the backend retains a backup before replacing an original.
 
+## License and attribution
+
+This project is licensed under the **Apache License 2.0**; see [LICENSE](LICENSE). The accompanying [NOTICE](NOTICE) identifies the original project author and repository owner as **@0xb0rn3** and links to https://github.com/0xb0rn3/MetaClean.
+
+Under Apache 2.0 Section 4(c) and (d), distributors of source or derivative works must retain applicable attribution notices and carry a readable copy of the applicable NOTICE attribution in the derivative's NOTICE file, source, accompanying documentation, or normal third-party notices display. The MetaClean dashboard and remote upload portal display the original-author credit.
+
+Modified files must be marked as changed, and forks must not imply endorsement by the original author. Consult the full LICENSE file for the exact terms.
+
 ## Safety and limitations
 
 MetaClean is not a secure-erasure utility. Flash storage wear levelling, filesystem snapshots, cloud backups, and Android media caches make guaranteed forensic erasure impossible through ordinary file deletion. The automatic workflow never overwrites originals. Metadata tools have format-specific coverage; a clean verification scan is evidence only for the tags those tools can inspect, not proof that every hidden provenance or C2PA structure is absent. Keep backups of important files.
