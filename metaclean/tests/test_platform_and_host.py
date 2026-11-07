@@ -101,7 +101,7 @@ class PlatformAndHostTests(unittest.TestCase):
             samples = {
                 "first.bin": b"same contents",
                 "renamed-copy.dat": b"same contents",
-                "same-size-different.bin": b"other contents",
+                "same-size-different.bin": b"diff contents",
             }
             for name, data in samples.items():
                 with open(os.path.join(folder, name), "wb") as handle:
