@@ -194,8 +194,19 @@ dialog::backdrop{background:rgba(5,8,12,.62)}
         <label class="chk"><input type="checkbox" id="optNotify"> Send a notification when a cleaning job finishes</label>
         <label class="chk"><input type="checkbox" id="optHidden"> Include hidden folders when scanning</label>
         <label class="chk"><input type="checkbox" id="optMonitor"> Automatically clean new downloads (while MetaClean is running)</label>
+        <label class="chk"><input type="checkbox" id="optDeleteOriginal"> Delete original after successful cleanup (copy mode only)</label>
       </div>
       <p class="hint" id="engineHint"></p>
+      <p class="hint">When enabled, the original is deleted only after a cleaned copy has been created successfully. This cannot guarantee secure erasure on flash storage.</p>
+    </details>
+    <details class="opts" id="hostOptions">
+      <summary>Host for devices on your local network</summary>
+      <div class="optgrid">
+        <p class="hint">Use this machine's CPU and cleaning tools to process uploads from another phone or computer, including iPhone and iPad. Remote uploads are temporary and are returned as a ZIP.</p>
+        <button class="btn primary" id="btnHost" type="button">Start hosting</button>
+        <div id="hostLinks" hidden></div>
+        <p class="hint">Hosting is off by default. When enabled, only private-network clients with the generated sharing link can access the upload portal. Stop hosting to revoke the link.</p>
+      </div>
     </details>
   </section>
 
@@ -256,13 +267,13 @@ dialog::backdrop{background:rgba(5,8,12,.62)}
   const FLAG = ['ai', 'location', 'identity', 'software'];
   const FINAL = ['done', 'failed', 'cancelled'];
   const HINTS = {
-    auto: 'exiftool for images (keeps colour profile and orientation), mat2 for audio, video and documents, with built-in fallbacks when a tool is missing.',
+    auto: 'Choose the best available cleaner for each supported format on this operating system.',
     mat2: 'mat2 only. It cannot handle HEIC and may re-encode some images.',
-    exiftool: 'exiftool only. Works on images, MP4/MOV, MP3/FLAC and PDF (with qpdf).',
-    both: 'Deepest clean: exiftool first, then mat2 on top. Images may be re-encoded and lose their colour profile.'
+    exiftool: 'ExifTool only. Works on registered image, media and PDF formats.',
+    both: 'Use ExifTool plus another available cleaner where the format supports it.'
   };
 
-  const prefs = Object.assign({ engine: 'auto', mode: 'copy', notify: true, hidden: false }, (() => {
+  const prefs = Object.assign({ engine: 'auto', mode: 'copy', notify: true, hidden: false, deleteOriginal: false }, (() => {
     try { return JSON.parse(localStorage.getItem('mc-prefs') || '{}'); } catch (_) { return {}; }
   })());
   const savePrefs = () => { try { localStorage.setItem('mc-prefs', JSON.stringify(prefs)); } catch (_) { /* storage unavailable */ } };
@@ -340,6 +351,15 @@ dialog::backdrop{background:rgba(5,8,12,.62)}
       serverBanners = status.banners;
       setClientBanner('net', 'error', '');
       $('#root').textContent = status.root;
+      if (status.platform && status.platform.termux) {
+        $('#optEngine option[value="mat2"]').hidden = true;
+        if (prefs.engine === 'mat2') { prefs.engine = 'auto'; savePrefs(); $('#optEngine').value = 'auto'; }
+        $('#engineHint').textContent = 'MAT2 is disabled on Termux. MetaClean uses ExifTool, FFmpeg and its built-in document fallback instead.';
+      } else {
+        $('#optEngine option[value="mat2"]').hidden = false;
+        $('#engineHint').textContent = HINTS[prefs.engine] || '';
+      }
+      renderHost(status.host);
     } catch (e) { handleErr(e); }
   }
 
@@ -479,8 +499,15 @@ dialog::backdrop{background:rgba(5,8,12,.62)}
       });
       if (!r.ok) return;
     }
+    if (prefs.deleteOriginal && prefs.mode === 'copy') {
+      const r = await confirmDlg({
+        title: 'Delete originals after cleanup?', ok: 'Clean, then delete originals', danger: true,
+        body: '<p>MetaClean will first create and verify a separate cleaned copy for each file. Only after that succeeds will it delete the source file. Failed cleanups will keep their originals.</p><p>This is ordinary file deletion, not guaranteed secure erasure.</p>'
+      });
+      if (!r.ok) return;
+    }
     try {
-      await api('/api/clean', { paths: rels, mode: prefs.mode, engine: prefs.engine, notify: prefs.notify });
+      await api('/api/clean', { paths: rels, mode: prefs.mode, engine: prefs.engine, notify: prefs.notify, delete_original: prefs.deleteOriginal && prefs.mode === 'copy' });
       toast('Cleaning ' + rels.length.toLocaleString() + ' file' + (rels.length === 1 ? '' : 's') + ' in the background');
       clearSel();
       pollJobs();
@@ -539,6 +566,8 @@ dialog::backdrop{background:rgba(5,8,12,.62)}
     $('#mTitle').textContent = it.name;
     $('#mPath').textContent = rel;
     $('#mPrev').innerHTML = previewHtml(it);
+    $('#mClean').disabled = !it.supported;
+    $('#mClean').title = it.supported ? '' : 'No safe cleaner is registered for this format';
     $('#mBody').innerHTML = '<div class="muted">Reading metadata</div>';
     $('#dlgMeta').showModal();
     try {
@@ -571,6 +600,7 @@ dialog::backdrop{background:rgba(5,8,12,.62)}
     if (j.kind === 'delete') return '<li class="good"><b>' + nm + '</b><span>Deleted, freed ' + fmtSize(r.before) + '</span></li>';
     let t = fmtSize(r.before) + ' became ' + fmtSize(r.after) + ' using ' + esc(r.engines.join(' + '));
     if (r.output && r.output !== r.rel) t += '<br>Saved as ' + esc(r.output.split('/').pop());
+    if (r.original_deleted) t += '<br>Original deleted after successful cleanup';
     (r.notes || []).forEach((n) => { t += '<br>' + esc(n); });
     if (r.verified && r.residual.length) t += '<em class="leftover">' + r.residual.length + ' sensitive tag' + (r.residual.length === 1 ? '' : 's') + ' remain: ' + esc(r.residual.slice(0, 4).join(', ')) + '</em>';
     else if (r.verified) t += '<em class="clear">Verified: nothing sensitive left</em>';
@@ -636,16 +666,58 @@ dialog::backdrop{background:rgba(5,8,12,.62)}
   }
 
   /* ------------------------------------------------------------ wiring */
+  function renderHost(host) {
+    host = host || { enabled: false, urls: [] };
+    $('#btnHost').textContent = host.enabled ? 'Stop hosting' : 'Start hosting';
+    $('#btnHost').className = host.enabled ? 'btn danger' : 'btn primary';
+    const box = $('#hostLinks');
+    box.hidden = !host.enabled;
+    if (!host.enabled) { box.innerHTML = ''; return; }
+    const urls = host.urls || [];
+    box.innerHTML = urls.length
+      ? '<p class="hint">Share one of these links with devices on the same private Wi-Fi/LAN:</p>' + urls.map((url) =>
+          '<div style="display:flex;gap:6px;margin:7px 0"><input style="min-width:0;flex:1" readonly value="' + esc(url) + '"><button class="btn ghost small" type="button" data-host-copy="' + esc(url) + '">Copy</button></div>'
+        ).join('')
+      : '<p class="hint">Hosting is enabled, but no private IPv4 address was detected. Connect to Wi-Fi or Ethernet and refresh this page.</p>';
+  }
+
   function bind() {
     $('#optEngine').value = prefs.engine;
     $('#optMode').value = prefs.mode;
     $('#optNotify').checked = !!prefs.notify;
     $('#optHidden').checked = !!prefs.hidden;
     $('#optMonitor').checked = !!prefs.monitor;
+    $('#optDeleteOriginal').checked = !!prefs.deleteOriginal;
+    $('#optDeleteOriginal').disabled = prefs.mode === 'replace';
     const hint = () => { $('#engineHint').textContent = HINTS[prefs.engine] || ''; };
     hint();
     $('#optEngine').addEventListener('change', (e) => { prefs.engine = e.target.value; savePrefs(); hint(); });
-    $('#optMode').addEventListener('change', (e) => { prefs.mode = e.target.value; savePrefs(); });
+    $('#optMode').addEventListener('change', (e) => {
+      prefs.mode = e.target.value;
+      if (prefs.mode === 'replace') { prefs.deleteOriginal = false; $('#optDeleteOriginal').checked = false; }
+      $('#optDeleteOriginal').disabled = prefs.mode === 'replace';
+      savePrefs();
+    });
+    $('#optDeleteOriginal').addEventListener('change', (e) => { prefs.deleteOriginal = e.target.checked; savePrefs(); });
+    $('#btnHost').addEventListener('click', async () => {
+      const enable = !(status && status.host && status.host.enabled);
+      try {
+        const result = await api('/api/host', { enabled: enable });
+        if (status) status.host = result.host;
+        renderHost(result.host);
+        toast(enable ? 'LAN hosting enabled' : 'LAN hosting stopped');
+      } catch (err) { handleErr(err); }
+    });
+    $('#hostLinks').addEventListener('click', async (e) => {
+      const b = e.target.closest('[data-host-copy]');
+      if (!b) return;
+      const value = b.getAttribute('data-host-copy');
+      try {
+        if (navigator.clipboard && window.isSecureContext) await navigator.clipboard.writeText(value);
+        else { const input = b.parentElement.querySelector('input'); input.select(); document.execCommand('copy'); }
+        toast('Sharing link copied');
+      } catch (_) { toast('Copy failed; select the link manually', 'err'); }
+    });
     $('#optNotify').addEventListener('change', (e) => { prefs.notify = e.target.checked; savePrefs(); });
     $('#optHidden').addEventListener('change', (e) => { prefs.hidden = e.target.checked; savePrefs(); });
     $('#optMonitor').addEventListener('change', async (e) => { prefs.monitor = e.target.checked; savePrefs(); try { await api('/api/monitor', { enabled: prefs.monitor }); toast(prefs.monitor ? 'Automatic monitoring enabled' : 'Automatic monitoring stopped'); } catch (err) { e.target.checked = false; prefs.monitor = false; savePrefs(); handleErr(err); } });
