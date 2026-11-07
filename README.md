@@ -69,7 +69,7 @@ Actual cleaning coverage depends on installed tools and each format's support. U
 
 ## Project layout
 
-The runnable project is in `metaclean/`. The self-contained source bundle is also provided as `MetaClean-Termux.zip`. A GitHub Actions workflow expands the bundle into the browsable source directory after the initial bundle upload.
+The runnable project is in `metaclean/`. The self-contained source bundle is also provided as `MetaClean-Termux.tar.xz`. A GitHub Actions workflow expands the archive into the browsable source directory after the initial bundle upload.
 
 ## License
 
