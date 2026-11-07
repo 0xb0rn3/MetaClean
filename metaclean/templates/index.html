@@ -650,6 +650,7 @@ dialog::backdrop{background:rgba(5,8,12,.62)}
     try {
       const d = await api('/api/duplicates', { include_hidden: prefs.hidden, notify: prefs.notify });
       duplicateJobId = d.job_id;
+      duplicateDeleteJobId = '';
       duplicateOffset = 0;
       duplicateTotal = 0;
       duplicateFilesTotal = 0;
