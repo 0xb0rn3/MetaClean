@@ -973,7 +973,6 @@ def run_duplicate_scan_job(job, include_hidden=True, notify=True):
                     or getattr(before, "st_ino", None) != getattr(after, "st_ino", None)
                 ):
                     job["failed"] += 1
-                    job["done"] += 1
                     continue
                 record = {
                     "rel": item["rel"],
