@@ -1,27 +1,62 @@
 # MetaClean
 
-**MetaClean** is a localhost-only metadata inspection and sanitization dashboard designed for Android devices running [Termux](https://termux.dev/).
+**MetaClean** is a localhost-only metadata inspection and sanitization dashboard for Android devices running [Termux](https://termux.dev/).
 
-It inventories accessible shared storage, reports metadata found in supported files, and creates sanitized copies by default. Originals are left in place unless the operator explicitly chooses replacement or deletion.
+It inventories accessible shared storage, reports metadata found in supported files, and creates sanitized copies by default. Originals remain untouched unless the operator explicitly chooses replacement or deletion.
 
-## Quick start (Termux)
+## Installation options (Termux)
 
-1. Download the repository ZIP from GitHub and extract it.
-2. Open Termux and change into the extracted `metaclean/` directory.
-3. Run:
+Choose any one of the following methods. All three install the same application.
+
+### Option 1 — Git clone (recommended for updates)
+
+Install Git, clone the repository, then run the setup script:
+
+```bash
+pkg update -y
+pkg install git -y
+git clone https://github.com/0xb0rn3/MetaClean.git
+cd MetaClean/metaclean
+bash setup.sh
+```
+
+### Option 2 — Direct curl (no Git required)
+
+This downloads the current `main` branch archive directly from GitHub, extracts only the runnable `metaclean/` project into `~/MetaClean`, and runs setup:
+
+```bash
+pkg update -y
+pkg install curl tar -y
+mkdir -p "$HOME/MetaClean"
+cd "$HOME/MetaClean"
+curl -fL https://github.com/0xb0rn3/MetaClean/archive/refs/heads/main.tar.gz -o metaclean.tar.gz
+tar -xzf metaclean.tar.gz --strip-components=2 MetaClean-main/metaclean
+rm metaclean.tar.gz
+bash setup.sh
+```
+
+### Option 3 — GitHub ZIP download
+
+1. Open [MetaClean on GitHub](https://github.com/0xb0rn3/MetaClean).
+2. Select **Code → Download ZIP**, then extract the archive in Termux.
+3. Enter the extracted `MetaClean-main/metaclean/` directory.
+4. Run:
 
    ```bash
    bash setup.sh
    ```
 
-4. Grant Android storage permission when prompted.
-5. Start the dashboard from any directory:
+### Finish setup
 
-   ```bash
-   metaclean
-   ```
+During installation, Android may ask for shared-storage permission. Tap **Allow**. The setup script installs the required Termux packages and Python dependencies, then installs a global `metaclean` launcher.
 
-Open **http://127.0.0.1:5000** in the device browser. The launcher also attempts to open it automatically.
+Start the dashboard from any directory:
+
+```bash
+metaclean
+```
+
+Open **http://127.0.0.1:5000** in the device browser. The launcher attempts to open it automatically.
 
 Useful commands:
 
@@ -32,9 +67,21 @@ metaclean status   # show service state
 metaclean stop     # stop the service
 metaclean restart  # restart the service
 metaclean logs     # follow the service log
+metaclean-setup    # rerun the installer/updater
 ```
 
-To update an installation after modifying the source, rerun `bash setup.sh` from the updated project directory.
+### Updating
+
+For a Git clone installation:
+
+```bash
+cd ~/MetaClean
+git pull
+cd metaclean
+bash setup.sh
+```
+
+For a direct-curl or ZIP installation, download and extract the newest archive again, then rerun `bash setup.sh` from the updated project directory. The installer refreshes the global copy under `~/.local/share/metaclean`.
 
 ## Features
 
@@ -69,7 +116,7 @@ Actual cleaning coverage depends on installed tools and each format's support. U
 
 ## Project layout
 
-The runnable project is in `metaclean/`. The self-contained source bundle is also provided as `MetaClean-Termux.tar.xz`. A GitHub Actions workflow expands the archive into the browsable source directory after the initial bundle upload.
+The runnable project is in `metaclean/`. The self-contained source bundle is also provided as `MetaClean-Termux.tar.xz`.
 
 ## License
 
