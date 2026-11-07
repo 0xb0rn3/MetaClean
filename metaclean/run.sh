@@ -17,6 +17,7 @@ is_running() {
 case "${1:-start}" in
   stop)
     if is_running; then kill "$(cat "$PIDFILE")" 2>/dev/null || true; rm -f "$PIDFILE"; echo "MetaClean stopped."; else echo "MetaClean is not running."; fi
+    command -v termux-wake-unlock >/dev/null 2>&1 && termux-wake-unlock >/dev/null 2>&1 || true
     exit 0 ;;
   status)
     if is_running; then echo "MetaClean is running at $URL (PID $(cat "$PIDFILE"))."; else echo "MetaClean is stopped."; fi
