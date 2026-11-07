@@ -176,6 +176,12 @@ Actual cleaning coverage depends on installed tools and each format's support. U
 
 The runnable project is in `metaclean/`. The self-contained source bundle is also provided as `MetaClean-Termux.tar.xz`.
 
-## License
+## License and original-author attribution
 
-No license has been added yet. Until a license is chosen, standard copyright restrictions apply; do not assume the code is licensed for redistribution or modification.
+MetaClean is licensed under the **Apache License 2.0**. See [LICENSE](LICENSE).
+
+The accompanying [NOTICE](NOTICE) identifies the original project author and repository owner as **@0xb0rn3** and links to the original repository: https://github.com/0xb0rn3/MetaClean.
+
+Apache License 2.0 Section 4(c) and (d) require downstream distributors of source or derivative works to retain applicable original attribution notices and, because this project includes a NOTICE file, to carry a readable copy of its applicable attribution in the NOTICE file, source, accompanying documentation, or the derivative application's normal notices display. The MetaClean dashboard and remote upload portal also show the original-author credit.
+
+You may modify and redistribute the project under the Apache 2.0 terms. Mark modified files clearly and do not imply that the original author endorses a fork. See the full license for the exact conditions.
