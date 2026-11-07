@@ -261,7 +261,7 @@ def storage_state():
         return {
             "ok": False,
             "writable": False,
-            "reason": "Storage folder not found. Run termux-setup-storage, allow access, then restart MetaClean.",
+            "reason": f"File root not found: {ROOT}. Check the installation and storage path.",
         }
     try:
         os.listdir(ROOT)
@@ -294,7 +294,7 @@ def send_notification(title, content, job_id):
     cmd = [
         exe, "--title", title, "--content", content,
         "--id", f"metaclean-{job_id}", "--group", "metaclean", "--priority", "high",
-        "--action", f"termux-open-url http://{HOST}:{PORT}/",
+        "--action", f"termux-open-url http://127.0.0.1:{PORT}/",
     ]
     try:
         proc = subprocess.run(cmd, capture_output=True, encoding="utf-8", errors="replace", timeout=15)
@@ -926,7 +926,7 @@ def run_clean_job(job, paths, mode, engine, notify, delete_original=False):
             finish_job(job, "failed", summary)
         else:
             finish_job(job, "done", summary)
-        if notify:
+        if notify and IS_TERMUX:
             job["notify_status"] = send_notification("MetaClean finished", summary, job["id"])
     except Exception as exc:
         app.logger.exception("clean job crashed")
@@ -1238,11 +1238,11 @@ def api_status():
         banners.append({"level": "error", "text": st["reason"]})
     elif not st["writable"]:
         banners.append(
-            {"level": "warn", "text": "Shared storage is read-only for Termux. Inspecting works; cleaning and deleting will fail."}
+            {"level": "warn", "text": "The configured file root is read-only. Inspection works, but cleaning and deletion need write access."}
         )
     if not T["exiftool"]["available"]:
         banners.append(
-            {"level": "error", "text": f"exiftool is unavailable ({T['exiftool']['error']}). Install it with: pkg install exiftool"}
+            {"level": "error", "text": f"ExifTool is unavailable ({T['exiftool']['error']}). Rerun the platform installer or add ExifTool to PATH."}
         )
     if not T["mat2"]["available"] and not IS_TERMUX:
         banners.append(
@@ -1253,9 +1253,9 @@ def api_status():
         )
     if not T["ffmpeg"]["available"]:
         banners.append(
-            {"level": "warn", "text": "ffmpeg is missing: no thumbnails and no audio/video fallback. Install it with: pkg install ffmpeg"}
+            {"level": "warn", "text": "FFmpeg is missing: thumbnails and audio/video fallback cleaning are unavailable. Install FFmpeg and ensure it is on PATH."}
         )
-    if not T["termux-notification"]["available"]:
+    if IS_TERMUX and not T["termux-notification"]["available"]:
         banners.append(
             {"level": "warn", "text": "termux-notification is missing: install the termux-api package and the Termux:API app to get completion notifications."}
         )
@@ -1454,7 +1454,7 @@ def run_all_job(job, include_hidden, notify=True):
         job["total"] = len(paths)
         if not paths:
             finish_job(job, "done", "Inventory complete. No supported original files need cleaning.")
-            if notify:
+            if notify and IS_TERMUX:
                 job["notify_status"] = send_notification("MetaClean finished", job["message"], job["id"])
             return
         run_clean_job(job, paths, "copy", "auto", notify)
