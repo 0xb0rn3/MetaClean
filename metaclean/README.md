@@ -65,6 +65,15 @@ bash setup.sh
 
 For curl or ZIP installations, extract the latest project files again and rerun `bash setup.sh` from the updated project directory.
 
+## Smarter file discovery
+
+The dashboard's **Media & docs** view prioritises recognised user content rather than filling the main view with miscellaneous app and system files. Detection covers common photos and camera RAW formats, video containers, audio formats, and office/document formats, including formats that are view-only.
+
+- **Other files** remains available as a separate tab for unrecognised file types.
+- Obvious clutter is excluded from inventory: cache/thumbnail/temp folders, `.nomedia`, OS housekeeping files, and incomplete download/temp/lock/log files.
+- Detection is broader than cleaning support. Files labelled **view only** can be browsed but cannot be selected for batch cleaning unless a safe cleaner is registered.
+- RUN ALL and automatic monitoring still operate only on the existing safe-cleaner registry. Detecting a file does not make it eligible for cleaning.
+
 ## Workflow
 
 - **Scan** inventories all accessible regular files under `~/storage/shared`, including unknown extensions. Android's protected `Android/data` and `Android/obb` trees are excluded because ordinary Termux storage permission does not grant access to them.
