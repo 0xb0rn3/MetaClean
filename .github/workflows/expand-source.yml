@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
     paths:
-      - MetaClean-Termux.zip
+      - MetaClean-Termux.tar.xz
       - .github/workflows/expand-source.yml
 
 permissions:
@@ -17,7 +17,7 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
       - name: Expand project source
-        run: unzip -o MetaClean-Termux.zip -d .
+        run: tar -xJf MetaClean-Termux.tar.xz
       - name: Commit browsable source tree
         run: |
           git config user.name "github-actions[bot]"
