@@ -132,6 +132,7 @@ For a direct-curl or ZIP installation, download and extract the newest archive a
 - Recursive inventory of accessible regular files under `~/storage/shared`, including unsupported extensions.
 - Metadata inspection using ExifTool and MAT2 when available. Termux deliberately skips MAT2 and uses ExifTool, FFmpeg and built-in document fallbacks.
 - Image and video thumbnails, file filtering, progress tracking, and batch jobs.
+- **Duplicate finder** scans all accessible file types for byte-identical copies using SHA-256 hashes, groups matching files regardless of names, and estimates reclaimable space. It is read-only until removal is explicitly confirmed; choose one keeper per group and MetaClean rechecks the files before deleting extra copies.
 - **RUN ALL** scans storage and sanitizes supported originals into adjacent `.cleaned` copies.
 - Optional **Delete original after successful cleanup** removes a source only after its cleaned copy has been created successfully. It applies to manually selected cleaning and **RUN ALL**, is off by default, works only in copy mode, and is not secure erasure.
 - Optional **Host for devices on your local network** turns the computer or Termux device into a processing server. Another device opens a generated link, uploads supported files, and downloads a ZIP cleaned by the host's CPU and installed tools.
@@ -170,6 +171,7 @@ Actual cleaning coverage depends on installed tools and each format's support. U
 - On Termux, install the separate Termux:API Android app from the same source as the Termux app; the `termux-api` package alone does not install that Android companion. Host mode displays whether the wake-lock request succeeded. The lock uses additional battery power, and Android vendor battery controls or Wi-Fi changes can still interrupt service. Keep the phone on the same Wi-Fi network as clients and stop hosting when finished.
 - A remote upload is temporarily written to the host's system temp directory for processing and download. Normal completion removes the temporary workspace when the response closes; an abrupt power loss or process kill can interrupt that cleanup.
 - Automatic cleaning uses copy mode. Review outputs before sharing or deleting originals.
+- Duplicate detection is exact-content matching, not visual similarity: resized, recompressed or edited photos are not duplicates unless their bytes are identical. Duplicate scan includes all accessible regular files, including formats MetaClean cannot clean. Keep at least one copy in every group; deletion is ordinary filesystem deletion.
 - Metadata removal is format-specific. A clean verification scan is not proof that every possible embedded provenance structure has been removed.
 - MetaClean is **not** a secure-erasure tool. Flash storage wear levelling, snapshots, caches, and cloud backups prevent reliable forensic erasure through ordinary file deletion.
 - Keep independent backups of important files. Use replace and delete actions carefully.
