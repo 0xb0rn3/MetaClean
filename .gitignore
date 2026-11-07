@@ -1,0 +1,15 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Local configuration, logs and temporary work
+.env
+*.log
+*.part
+.cache/
+
+# User files and generated cleaning output
+*.cleaned.*
+*.metaclean.bak
