@@ -81,7 +81,8 @@ else
   printf '  termux-notification missing\n'
 fi
 echo
-echo "Notifications also need the Termux:API Android app, installed from the same source as Termux (F-Droid or GitHub)."
+echo "Notifications and Host-mode wake locks also need the Termux:API Android app, installed from the same source as Termux (F-Droid or GitHub)."
+echo "Host mode requests the Android wake lock only while LAN hosting is enabled; it is released when hosting is stopped."
 echo "Start MetaClean with: ./run.sh"
 
 step "Installing a permanent global launcher"
