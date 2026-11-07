@@ -104,6 +104,27 @@ class PlatformAndHostTests(unittest.TestCase):
             self.assertTrue(os.path.exists(original))
             self.assertFalse(job["results"][0].get("original_deleted", False))
 
+    def test_run_all_passes_delete_original_preference(self):
+        previous_items = metaclean.INDEX["items"]
+        job = metaclean.new_job("run-all")
+        scan = {"status": "done", "message": "", "id": "scan-test"}
+        metaclean.INDEX["items"] = {
+            "DCIM/photo.jpg": {
+                "rel": "DCIM/photo.jpg", "supported": True, "cleaned": False
+            }
+        }
+        try:
+            with patch.object(metaclean, "new_job", return_value=scan), \
+                 patch.object(metaclean, "run_scan_job", side_effect=lambda scan_job, hidden: scan_job.update(status="done")), \
+                 patch.object(metaclean.os.path, "exists", return_value=False), \
+                 patch.object(metaclean, "run_clean_job") as clean:
+                metaclean.run_all_job(job, False, False, True)
+            clean.assert_called_once_with(
+                job, ["DCIM/photo.jpg"], "copy", "auto", False, True
+            )
+        finally:
+            metaclean.INDEX["items"] = previous_items
+
 
 if __name__ == "__main__":
     unittest.main()
