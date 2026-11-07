@@ -52,6 +52,19 @@ Then open [http://127.0.0.1:5000](http://127.0.0.1:5000).
 
 Commands: `metaclean`, `metaclean open`, `metaclean status`, `metaclean stop`, `metaclean restart`, and `metaclean logs`. Run `metaclean-setup` to rerun the installer/updater.
 
+## Termux MAT2 policy
+
+MAT2 is deliberately skipped on Termux. MetaClean does not probe or select it there, even if a copy happens to exist in the environment. This avoids Termux compatibility problems. Linux desktops and servers may use MAT2 when available; Windows uses the native ExifTool, FFmpeg and qpdf tools.
+
+## Host mode for iPhone and other LAN devices
+
+Open the dashboard's **Cleaning options → Host for devices on your local network**, then select **Start hosting**. Copy one of the generated links and open it on a device connected to the same private Wi-Fi/LAN. The remote upload page accepts up to 25 files per batch (maximum 1 GB request) and returns a ZIP of cleaned copies processed by the Termux device.
+
+The upload portal is separate from the personal-storage dashboard. Remote clients cannot browse the host's shared storage. Uploaded sources and cleaned outputs are kept in a temporary host directory only during processing and download, then removed when the response closes. Original files on the uploading phone/computer are not modified. Stop hosting to revoke the current link. Do not port-forward the host or expose it to the public internet.
+
+## Delete original after successful cleanup
+
+The cleaning options include **Delete original after successful cleanup**. It is off by default and applies only to copy mode. MetaClean first writes the cleaned copy; it deletes the original only after the copy operation succeeds. If cleaning fails, the original is retained. This is normal file deletion, not secure erasure.
 ## Updating
 
 For Git clone installations:
@@ -85,4 +98,4 @@ The dashboard's **Media & docs** view prioritises recognised user content rather
 
 MetaClean is not a secure-erasure utility. Flash storage wear levelling, filesystem snapshots, cloud backups, and Android media caches make guaranteed forensic erasure impossible through ordinary file deletion. The automatic workflow never overwrites originals. Metadata tools have format-specific coverage; a clean verification scan is evidence only for the tags those tools can inspect, not proof that every hidden provenance or C2PA structure is absent. Keep backups of important files.
 
-The service binds only to `127.0.0.1`; it is not exposed to the LAN. Termux:API notifications require both the `termux-api` package and the matching Android Termux:API app.
+The normal dashboard and API remain local-only. The network listener is guarded so only the separate upload portal can be reached by private-LAN clients after Host mode is explicitly enabled and a sharing link is supplied. Termux:API notifications require both the `termux-api` package and the matching Android Termux:API app.
