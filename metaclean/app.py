@@ -1764,6 +1764,9 @@ def api_duplicate_scan():
         raise ApiError(state["reason"], 503, "storage_unavailable")
     with JOBS_LOCK:
         for existing in JOBS.values():
+            if existing["kind"] == "duplicate-delete" and existing.get("report_id") and existing["status"] in ("queued", "running"):
+                raise ApiError("Wait for the current duplicate-removal job to finish before scanning again.", 409, "duplicate_removal_running")
+        for existing in JOBS.values():
             if existing["kind"] == "duplicate-scan" and existing["status"] in ("queued", "running"):
                 return jsonify(job_id=existing["id"], reused=True)
     job = new_job("duplicate-scan")
@@ -1799,6 +1802,9 @@ def api_duplicate_remove(job_id):
     body = request.get_json(silent=True) or {}
     if body.get("confirm") is not True:
         raise ApiError("Duplicate removal must be explicitly confirmed.", 400, "not_confirmed")
+    state = storage_state()
+    if not state["ok"] or not state["writable"]:
+        raise ApiError(state.get("reason") or "The storage root is read-only.", 503, "storage_unavailable")
     job = JOBS.get(job_id)
     if not job or job.get("kind") != "duplicate-scan" or job.get("status") != "done":
         raise ApiError("A completed duplicate scan is required.", 409, "duplicate_scan_incomplete")
@@ -1806,6 +1812,14 @@ def api_duplicate_remove(job_id):
         report = DUPLICATE_REPORTS.get(job_id)
     if report is None:
         raise ApiError("This duplicate report has expired. Run another scan.", 410, "duplicate_report_expired")
+    with JOBS_LOCK:
+        if any(
+            existing["kind"] == "duplicate-delete"
+            and existing.get("report_id") == job_id
+            and existing["status"] in ("queued", "running")
+            for existing in JOBS.values()
+        ):
+            raise ApiError("Duplicate removal is already running for this report.", 409, "duplicate_removal_running")
     keepers = body.get("keepers")
     if not isinstance(keepers, list) or not keepers or len(keepers) > 100:
         raise ApiError("Select at least one duplicate group (maximum 100 per removal).", 400, "bad_duplicate_selection")
@@ -1826,6 +1840,7 @@ def api_duplicate_remove(job_id):
         selections.append({"hash": digest, "keep": keep_rel})
     total = sum(len(known[item["hash"]]["files"]) - 1 for item in selections)
     job = new_job("duplicate-delete", total)
+    job["report_id"] = job_id
     POOL.submit(run_duplicate_delete_job, job, selections, report)
     return jsonify(job_id=job["id"], total=total)
 
