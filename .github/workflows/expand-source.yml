@@ -1,0 +1,29 @@
+name: Expand bundled source
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - MetaClean-Termux.zip
+      - .github/workflows/expand-source.yml
+
+permissions:
+  contents: write
+
+jobs:
+  expand:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Expand project source
+        run: unzip -o MetaClean-Termux.zip -d .
+      - name: Commit browsable source tree
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add metaclean
+          if ! git diff --cached --quiet; then
+            git commit -m "chore: expand MetaClean source bundle"
+            git push
+          fi
