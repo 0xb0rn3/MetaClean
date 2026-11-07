@@ -96,6 +96,103 @@ class PlatformAndHostTests(unittest.TestCase):
         finally:
             metaclean.IS_TERMUX = previous
 
+    def test_duplicate_scan_uses_exact_content_not_names(self):
+        with tempfile.TemporaryDirectory() as folder:
+            samples = {
+                "first.bin": b"same contents",
+                "renamed-copy.dat": b"same contents",
+                "same-size-different.bin": b"other contents",
+            }
+            for name, data in samples.items():
+                with open(os.path.join(folder, name), "wb") as handle:
+                    handle.write(data)
+            job = metaclean.new_job("duplicate-scan")
+            try:
+                with mock.patch.object(metaclean, "ROOT", folder):
+                    metaclean.run_duplicate_scan_job(job, True, False)
+                self.assertEqual(job["status"], "done")
+                self.assertEqual(job["duplicate_groups"], 1)
+                self.assertEqual(job["duplicate_files"], 2)
+                with metaclean.DUPLICATE_REPORTS_LOCK:
+                    report = metaclean.DUPLICATE_REPORTS[job["id"]]
+                self.assertEqual(
+                    {item["name"] for item in report[0]["files"]},
+                    {"first.bin", "renamed-copy.dat"},
+                )
+            finally:
+                with metaclean.DUPLICATE_REPORTS_LOCK:
+                    metaclean.DUPLICATE_REPORTS.pop(job["id"], None)
+
+    def test_duplicate_removal_keeps_selected_copy(self):
+        with tempfile.TemporaryDirectory() as folder:
+            keep_path = os.path.join(folder, "keep.bin")
+            duplicate_path = os.path.join(folder, "duplicate.bin")
+            content = b"identical duplicate payload"
+            for path in (keep_path, duplicate_path):
+                with open(path, "wb") as handle:
+                    handle.write(content)
+            digest = metaclean.sha256_file(keep_path)
+            report = [{
+                "hash": digest,
+                "size": len(content),
+                "files": [
+                    {"rel": "keep.bin", "name": "keep.bin", "size": len(content), "mtime": 1},
+                    {"rel": "duplicate.bin", "name": "duplicate.bin", "size": len(content), "mtime": 2},
+                ],
+                "copies": 2,
+                "wasted_bytes": len(content),
+            }]
+            job = metaclean.new_job("duplicate-delete", 1)
+            with mock.patch.object(metaclean, "ROOT", folder), \
+                 mock.patch.object(metaclean, "ROOT_REAL", os.path.realpath(folder)):
+                metaclean.run_duplicate_delete_job(
+                    job, [{"hash": digest, "keep": "keep.bin"}], report
+                )
+            self.assertEqual(job["status"], "done")
+            self.assertTrue(os.path.exists(keep_path))
+            self.assertFalse(os.path.exists(duplicate_path))
+            self.assertEqual(job["done"], 1)
+
+    def test_duplicate_removal_refuses_changed_copy(self):
+        with tempfile.TemporaryDirectory() as folder:
+            keep_path = os.path.join(folder, "keep.bin")
+            changed_path = os.path.join(folder, "changed.bin")
+            content = b"same-size original"
+            with open(keep_path, "wb") as handle:
+                handle.write(content)
+            with open(changed_path, "wb") as handle:
+                handle.write(content)
+            digest = metaclean.sha256_file(keep_path)
+            with open(changed_path, "wb") as handle:
+                handle.write(b"modified content!!")
+            report = [{
+                "hash": digest,
+                "size": len(content),
+                "files": [
+                    {"rel": "keep.bin", "name": "keep.bin", "size": len(content), "mtime": 1},
+                    {"rel": "changed.bin", "name": "changed.bin", "size": len(content), "mtime": 2},
+                ],
+                "copies": 2,
+                "wasted_bytes": len(content),
+            }]
+            job = metaclean.new_job("duplicate-delete", 1)
+            with mock.patch.object(metaclean, "ROOT", folder), \
+                 mock.patch.object(metaclean, "ROOT_REAL", os.path.realpath(folder)):
+                metaclean.run_duplicate_delete_job(
+                    job, [{"hash": digest, "keep": "keep.bin"}], report
+                )
+            self.assertTrue(os.path.exists(keep_path))
+            self.assertTrue(os.path.exists(changed_path))
+            self.assertEqual(job["failed"], 1)
+
+    def test_duplicate_removal_requires_explicit_confirmation(self):
+        response = self.client.post(
+            "/api/duplicates/not-a-real-report/remove",
+            json={"confirm": False, "keepers": []},
+            headers={"X-MC-Token": metaclean.TOKEN},
+        )
+        self.assertEqual(response.status_code, 400)
+
     def test_termux_disables_mat2_and_uses_native_fallback_plan(self):
         old_termux = metaclean.IS_TERMUX
         old_cache = dict(metaclean._TOOLS)
