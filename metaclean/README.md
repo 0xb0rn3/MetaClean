@@ -64,7 +64,7 @@ The upload portal is separate from the personal-storage dashboard. Remote client
 
 ## Delete original after successful cleanup
 
-The cleaning options include **Delete original after successful cleanup**. It is off by default and applies only to copy mode. MetaClean first writes the cleaned copy; it deletes the original only after the copy operation succeeds. If cleaning fails, the original is retained. This is normal file deletion, not secure erasure.
+The cleaning options include **Delete original after successful cleanup**. It is off by default and applies to manually selected cleaning and **RUN ALL** in copy mode. MetaClean first writes the cleaned copy; it deletes the original only after the copy operation succeeds. If cleaning fails, the original is retained. This is normal file deletion, not secure erasure.
 ## Updating
 
 For Git clone installations:
