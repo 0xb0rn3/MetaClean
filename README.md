@@ -133,7 +133,7 @@ For a direct-curl or ZIP installation, download and extract the newest archive a
 - Metadata inspection using ExifTool and MAT2 when available. Termux deliberately skips MAT2 and uses ExifTool, FFmpeg and built-in document fallbacks.
 - Image and video thumbnails, file filtering, progress tracking, and batch jobs.
 - **RUN ALL** scans storage and sanitizes supported originals into adjacent `.cleaned` copies.
-- Optional **Delete original after successful cleanup** removes a source only after its cleaned copy has been created successfully. It is off by default, works only in copy mode, and is not secure erasure.
+- Optional **Delete original after successful cleanup** removes a source only after its cleaned copy has been created successfully. It applies to manually selected cleaning and **RUN ALL**, is off by default, works only in copy mode, and is not secure erasure.
 - Optional **Host for devices on your local network** turns the computer or Termux device into a processing server. Another device opens a generated link, uploads supported files, and downloads a ZIP cleaned by the host's CPU and installed tools.
 - Remote uploads and outputs use a temporary host directory and are removed when the download response closes. Remote source files are never written into the host's normal inventory and the source on the uploading device is not changed.
 - Optional monitoring detects new or changed supported files and sanitizes them into copies while the MetaClean service is running.
