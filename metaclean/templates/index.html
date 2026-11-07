@@ -1,0 +1,729 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark light">
+<meta name="mc-token" content="{{ token }}">
+<title>MetaClean</title>
+{% raw %}
+<style>
+:root{
+  --bg:#0e1217;--panel:#161c23;--panel2:#1d252e;--text:#e9eef3;--muted:#8e9baa;--line:#27313c;
+  --accent:#5b7cff;--accent-ink:#ffffff;--danger:#ff6b6b;--warn:#f5b84b;--ok:#47c98b;
+  --c-ai:#b78bff;--c-location:#4cc3ff;--c-identity:#ff9a55;--c-software:#e3d45c;--c-device:#8fa3b5;--c-other:#3a4653;
+  --mono:ui-monospace,"SF Mono","Cascadia Mono",Menlo,Consolas,monospace;
+  color-scheme:dark;
+}
+@media (prefers-color-scheme: light){
+  :root{
+    --bg:#eef1f5;--panel:#ffffff;--panel2:#e7ecf2;--text:#121a24;--muted:#5a6a7b;--line:#d3dce6;
+    --accent:#3552e8;--danger:#d63a3a;--warn:#a96a00;--ok:#16794d;
+    --c-ai:#7b4de0;--c-location:#0b78b0;--c-identity:#c2540a;--c-software:#8a7a00;--c-device:#5d7184;--c-other:#b9c5d1;
+    color-scheme:light;
+  }
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--text);font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;padding-bottom:calc(110px + env(safe-area-inset-bottom))}
+button,input,select{font:inherit;color:inherit}
+.top{position:sticky;top:0;z-index:20;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:calc(10px + env(safe-area-inset-top)) 14px 10px;background:var(--bg);border-bottom:1px solid var(--line)}
+.brand{display:flex;flex-direction:column;min-width:0}
+.brand b{font-size:18px;font-weight:700;letter-spacing:.2px}
+.brand small{color:var(--muted);font-family:var(--mono);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+main{max-width:1100px;margin:0 auto;padding:12px}
+.btn{appearance:none;border:1px solid var(--line);background:var(--panel2);border-radius:10px;padding:9px 14px;font-weight:600;min-height:42px;cursor:pointer}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn.danger{background:var(--danger);border-color:var(--danger);color:#fff}
+.btn.ghost{background:transparent}
+.btn.small{min-height:34px;padding:5px 10px;font-size:13px}
+.btn:disabled{opacity:.5;cursor:default}
+.btn:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.banner{border-radius:10px;padding:10px 12px;margin:0 0 8px;border:1px solid var(--line);border-left-width:4px;background:var(--panel);font-size:14px}
+.banner.error{border-left-color:var(--danger)}
+.banner.warn{border-left-color:var(--warn)}
+.controls{display:flex;flex-direction:column;gap:10px;margin:12px 0 6px}
+#q{width:100%;padding:12px 14px;border-radius:12px;border:1px solid var(--line);background:var(--panel)}
+.chips{display:flex;gap:8px;overflow-x:auto;padding-bottom:2px;scrollbar-width:none}
+.chips::-webkit-scrollbar{display:none}
+.chip{flex:none;border:1px solid var(--line);background:var(--panel);border-radius:999px;padding:7px 13px;font-size:14px;cursor:pointer}
+.chip b{margin-left:6px;color:var(--muted);font-weight:600}
+.chip.on{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.chip.on b{color:inherit;opacity:.85}
+.selects{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+label.f{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted)}
+select{width:100%;padding:10px;border-radius:10px;border:1px solid var(--line);background:var(--panel);font-size:14px}
+.opts{border:1px solid var(--line);border-radius:12px;background:var(--panel);padding:0 12px}
+.opts summary{padding:11px 0;cursor:pointer;font-weight:600}
+.optgrid{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding-bottom:10px}
+.optgrid .chk{grid-column:1/-1}
+.chk{display:flex;align-items:center;gap:10px;font-size:14px}
+.chk input{width:20px;height:20px;accent-color:var(--accent)}
+.hint{margin:0 0 12px;color:var(--muted);font-size:13px}
+.listhead{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:14px 2px 8px;color:var(--muted);font-size:13px;min-height:34px}
+.empty{padding:36px 14px;text-align:center;color:var(--muted);border:1px dashed var(--line);border-radius:14px}
+.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+@media (min-width:600px){.grid{grid-template-columns:repeat(auto-fill,minmax(176px,1fr))}}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;overflow:hidden;cursor:pointer;min-width:0}
+.card.sel{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent)}
+.thumb{position:relative;aspect-ratio:1/1;background:var(--panel2);display:flex;align-items:center;justify-content:center;overflow:hidden}
+.thumb img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.thumb .ico{font-size:34px;opacity:.7}
+.thumb .ext{position:absolute;left:8px;bottom:8px;background:rgba(10,14,19,.72);color:#fff;border-radius:6px;padding:1px 7px;font:600 11px var(--mono)}
+.pick{position:absolute;top:0;right:0;padding:10px;display:flex}
+.pick input{width:24px;height:24px;accent-color:var(--accent)}
+.info{padding:9px 10px 10px;display:flex;flex-direction:column;gap:2px}
+.nm{font-weight:600;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sub{color:var(--muted);font-size:12px;display:flex;gap:10px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.bd{align-self:flex-start;margin-top:4px;border-radius:6px;padding:1px 7px;font-size:11px;font-weight:600;background:color-mix(in srgb,var(--ok) 18%,transparent);color:var(--ok)}
+.selbar{position:fixed;left:0;right:0;bottom:0;z-index:30;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px calc(10px + env(safe-area-inset-bottom));background:var(--panel);border-top:1px solid var(--line);box-shadow:0 -8px 24px rgba(0,0,0,.25)}
+.selbar div{display:flex;gap:8px}
+.selbar span{font-weight:600;font-size:14px}
+.job{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:11px 12px;margin-bottom:8px}
+.jh{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.jh b{font-size:14px}
+.jst{font-size:12px;color:var(--muted)}
+.job.done .jst{color:var(--ok)}.job.failed .jst{color:var(--danger)}.job.cancelled .jst{color:var(--warn)}
+.track{height:6px;border-radius:99px;background:var(--panel2);overflow:hidden;margin:9px 0 7px}
+.track i{display:block;height:100%;background:var(--accent);border-radius:99px;transition:width .4s}
+.track.indet i{width:35%;animation:slide 1.3s ease-in-out infinite alternate}
+@keyframes slide{from{transform:translateX(0)}to{transform:translateX(185%)}}
+@media (prefers-reduced-motion:reduce){.track.indet i{animation:none;width:100%;opacity:.5}.track i{transition:none}}
+.jt{font-size:13px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.jmsg{font-size:13px;margin-top:4px}
+.job details{margin-top:8px}
+.job summary{cursor:pointer;font-size:13px;color:var(--accent)}
+.job ul{list-style:none;margin:8px 0 0;padding:0;display:flex;flex-direction:column;gap:7px;max-height:260px;overflow:auto}
+.job li{font-size:12.5px;border-left:3px solid var(--line);padding-left:8px;display:flex;flex-direction:column;gap:1px}
+.job li b{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.job li span{color:var(--muted);overflow-wrap:anywhere}
+.job li.good{border-left-color:var(--ok)}.job li.bad{border-left-color:var(--danger)}.job li.bad span{color:var(--danger)}
+.leftover{color:var(--warn);font-style:normal;display:block}.clear{color:var(--ok);font-style:normal;display:block}
+dialog{width:100%;max-width:680px;max-height:92dvh;margin:auto 0 0;padding:0;border:1px solid var(--line);border-radius:18px 18px 0 0;background:var(--panel);color:var(--text);overflow:hidden}
+@media (min-width:700px){dialog{margin:auto;border-radius:18px}}
+dialog[open]{display:flex;flex-direction:column}
+dialog::backdrop{background:rgba(5,8,12,.62)}
+.dh{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;padding:14px 14px 10px;border-bottom:1px solid var(--line)}
+.dt{display:flex;flex-direction:column;min-width:0}
+.dt b{font-size:16px;overflow-wrap:anywhere}
+.dt small{color:var(--muted);font-family:var(--mono);font-size:11px;overflow-wrap:anywhere}
+.db{padding:12px 14px;overflow:auto;flex:1}
+.df{display:flex;gap:10px;justify-content:flex-end;padding:10px 14px calc(12px + env(safe-area-inset-bottom));border-top:1px solid var(--line)}
+.df .btn{flex:1}
+.prev{display:flex;justify-content:center;margin-bottom:12px}
+.prev img,.prev video{max-width:100%;max-height:34vh;border-radius:10px;background:var(--panel2)}
+.prev audio{width:100%}
+.prev .ico{font-size:44px;opacity:.7}
+.expo{display:flex;height:12px;border-radius:99px;overflow:hidden;gap:2px;margin:2px 0 10px}
+.expo i{display:block;min-width:6px}
+.sum{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
+.pill{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:999px;padding:3px 10px;font-size:12.5px}
+.pill:before{content:"";width:8px;height:8px;border-radius:50%;background:var(--dot,var(--c-other))}
+.tagbar{display:flex;align-items:center;justify-content:space-between;margin:6px 0 8px}
+.tags{display:flex;flex-direction:column;gap:6px}
+.tag{border-left:4px solid var(--rail,var(--c-other));background:var(--panel2);border-radius:0 8px 8px 0;padding:6px 9px}
+.tk{font:600 12px var(--mono);color:var(--muted);overflow-wrap:anywhere}
+.tk em{font-style:normal;color:var(--text)}
+.tv{font-size:13.5px;overflow-wrap:anywhere;white-space:pre-wrap}
+.c-ai{--rail:var(--c-ai);--dot:var(--c-ai)}.c-location{--rail:var(--c-location);--dot:var(--c-location)}
+.c-identity{--rail:var(--c-identity);--dot:var(--c-identity)}.c-software{--rail:var(--c-software);--dot:var(--c-software)}
+.c-device{--rail:var(--c-device);--dot:var(--c-device)}.c-other{--rail:var(--c-other);--dot:var(--c-other)}
+.sect{margin:14px 0 6px;font-weight:700;font-size:14px}
+.stream{font-size:13px;padding:5px 0;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;gap:8px}
+.stream .hid{color:var(--warn);font-weight:600}
+.okline{color:var(--ok);font-weight:600;padding:8px 0}
+.warnline{color:var(--warn)}
+.muted{color:var(--muted)}
+#toast{position:fixed;left:50%;bottom:calc(86px + env(safe-area-inset-bottom));transform:translateX(-50%);z-index:50;max-width:92%;background:var(--text);color:var(--bg);border-radius:10px;padding:10px 14px;font-size:14px;opacity:0;pointer-events:none;transition:opacity .2s}
+#toast.show{opacity:1}#toast.err{background:var(--danger);color:#fff}
+@media (prefers-reduced-motion:reduce){#toast{transition:none}}
+</style>
+{% endraw %}
+</head>
+<body>
+<header class="top">
+  <div class="brand"><b>MetaClean</b><small id="root">shared storage</small></div>
+  <div style="display:flex;gap:6px"><button class="btn primary" id="btnRun" type="button">RUN ALL</button><button class="btn ghost" id="btnScan" type="button">Scan</button></div>
+</header>
+
+<main>
+  <div id="banners"></div>
+  <section id="jobs" aria-live="polite"></section>
+
+  <section class="controls">
+    <input id="q" type="search" placeholder="Search by name or folder" autocomplete="off" enterkeyhint="search" aria-label="Search files">
+    <div class="chips" id="chips"></div>
+    <div class="selects">
+      <label class="f">Show
+        <select id="filter">
+          <option value="all">All files</option>
+          <option value="nocopy">Not cleaned yet</option>
+          <option value="withcopy">Originals with a cleaned copy</option>
+          <option value="cleaned">Cleaned copies</option>
+        </select>
+      </label>
+      <label class="f">Sort by
+        <select id="sort">
+          <option value="date:desc">Newest first</option>
+          <option value="date:asc">Oldest first</option>
+          <option value="size:desc">Largest first</option>
+          <option value="size:asc">Smallest first</option>
+          <option value="name:asc">Name A to Z</option>
+          <option value="name:desc">Name Z to A</option>
+        </select>
+      </label>
+    </div>
+    <details class="opts">
+      <summary>Cleaning options</summary>
+      <div class="optgrid">
+        <label class="f">Engine
+          <select id="optEngine">
+            <option value="auto">Auto (recommended)</option>
+            <option value="mat2">mat2 only</option>
+            <option value="exiftool">exiftool only</option>
+            <option value="both">Both (deepest)</option>
+          </select>
+        </label>
+        <label class="f">Output
+          <select id="optMode">
+            <option value="copy">Save a .cleaned copy</option>
+            <option value="replace">Replace the original</option>
+          </select>
+        </label>
+        <label class="chk"><input type="checkbox" id="optNotify"> Send a notification when a cleaning job finishes</label>
+        <label class="chk"><input type="checkbox" id="optHidden"> Include hidden folders when scanning</label>
+        <label class="chk"><input type="checkbox" id="optMonitor"> Automatically clean new downloads (while MetaClean is running)</label>
+      </div>
+      <p class="hint" id="engineHint"></p>
+    </details>
+  </section>
+
+  <div class="listhead"><span id="count">Loading</span><button class="btn ghost small" id="btnAll" type="button" hidden></button></div>
+  <div id="empty" class="empty" hidden></div>
+  <div id="grid" class="grid"></div>
+  <div id="sentinel" style="height:1px"></div>
+</main>
+
+<div id="bar" class="selbar" hidden>
+  <span id="barInfo"></span>
+  <div>
+    <button class="btn primary" id="barClean" type="button">Clean</button>
+    <button class="btn danger" id="barDelete" type="button">Delete</button>
+    <button class="btn ghost" id="barClear" type="button">Clear</button>
+  </div>
+</div>
+
+<dialog id="dlgMeta" aria-labelledby="mTitle">
+  <form method="dialog" class="dh">
+    <div class="dt"><b id="mTitle"></b><small id="mPath"></small></div>
+    <button class="btn ghost small" value="close" aria-label="Close">Close</button>
+  </form>
+  <div class="db"><div class="prev" id="mPrev"></div><div id="mBody"></div></div>
+  <div class="df">
+    <button class="btn primary" id="mClean" type="button">Clean this file</button>
+    <button class="btn danger" id="mDelete" type="button">Delete</button>
+  </div>
+</dialog>
+
+<dialog id="dlgConfirm" aria-labelledby="cfTitle">
+  <form method="dialog" style="display:flex;flex-direction:column;min-height:0">
+    <div class="dh"><b id="cfTitle"></b></div>
+    <div class="db" id="cfBody"></div>
+    <div class="db" id="cfSecureWrap" style="flex:none;padding-top:0" hidden>
+      <label class="chk"><input type="checkbox" id="cfSecure"> Overwrite the contents once before deleting</label>
+      <p class="hint" style="margin:6px 0 0">Flash storage may keep remnants through wear levelling, so this lowers but does not remove the chance of recovery.</p>
+    </div>
+    <div class="df">
+      <button class="btn" value="cancel">Cancel</button>
+      <button class="btn danger" id="cfOk" value="ok">Confirm</button>
+    </div>
+  </form>
+</dialog>
+
+<div id="toast" role="status"></div>
+
+{% raw %}
+<script>
+(() => {
+  'use strict';
+  const TOKEN = document.querySelector('meta[name="mc-token"]').content;
+  const $ = (s, r = document) => r.querySelector(s);
+  const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
+  const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const ICON = { image: '\u{1F5BC}\uFE0F', video: '\u{1F39E}\uFE0F', audio: '\u{1F3B5}', document: '\u{1F4C4}', other: '\u{1F4C1}' };
+  const CATS = { ai: 'AI / provenance', location: 'Location', identity: 'Identity', software: 'Software', device: 'Device', other: 'Other' };
+  const FLAG = ['ai', 'location', 'identity', 'software'];
+  const FINAL = ['done', 'failed', 'cancelled'];
+  const HINTS = {
+    auto: 'exiftool for images (keeps colour profile and orientation), mat2 for audio, video and documents, with built-in fallbacks when a tool is missing.',
+    mat2: 'mat2 only. It cannot handle HEIC and may re-encode some images.',
+    exiftool: 'exiftool only. Works on images, MP4/MOV, MP3/FLAC and PDF (with qpdf).',
+    both: 'Deepest clean: exiftool first, then mat2 on top. Images may be re-encoded and lose their colour profile.'
+  };
+
+  const prefs = Object.assign({ engine: 'auto', mode: 'copy', notify: true, hidden: false }, (() => {
+    try { return JSON.parse(localStorage.getItem('mc-prefs') || '{}'); } catch (_) { return {}; }
+  })());
+  const savePrefs = () => { try { localStorage.setItem('mc-prefs', JSON.stringify(prefs)); } catch (_) { /* storage unavailable */ } };
+
+  const S = { type: 'all', q: '', filter: 'all', sort: 'date', order: 'desc', items: [], total: 0, totalSize: 0, counts: {}, loading: false, done: false, pending: false, sel: new Map(), scannedAt: null };
+  let status = null, lastJobs = [], autoScanned = false, curMeta = null, curTags = [], jobsKey = '', serverBanners = [];
+  const seen = new Map(), dismissed = new Set(), openJobs = new Set(), clientBanners = new Map();
+
+  function fmtSize(n) {
+    n = Number(n) || 0;
+    if (n < 1024) return n + ' B';
+    const u = ['KB', 'MB', 'GB', 'TB'];
+    let i = -1;
+    do { n /= 1024; i++; } while (n >= 1024 && i < u.length - 1);
+    return n.toFixed(n >= 100 ? 0 : 1) + ' ' + u[i];
+  }
+  const fmtDate = (ts) => new Date(ts * 1000).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+  function ago(ts) {
+    const s = Math.max(0, Date.now() / 1000 - ts);
+    if (s < 60) return 'just now';
+    if (s < 3600) return Math.floor(s / 60) + ' min ago';
+    if (s < 86400) return Math.floor(s / 3600) + ' h ago';
+    return Math.floor(s / 86400) + ' d ago';
+  }
+  let toastTimer;
+  function toast(msg, kind) {
+    const t = $('#toast');
+    t.textContent = msg;
+    t.className = 'show ' + (kind || '');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { t.className = ''; }, 3800);
+  }
+
+  async function api(path, body) {
+    const opt = { headers: { 'X-MC-Token': TOKEN } };
+    if (body !== undefined) {
+      opt.method = 'POST';
+      opt.headers['Content-Type'] = 'application/json';
+      opt.body = JSON.stringify(body);
+    }
+    let r;
+    try { r = await fetch(path, opt); } catch (_) {
+      const e = new Error('Cannot reach the local server. Make sure run.sh is still running in Termux.');
+      e.network = true;
+      throw e;
+    }
+    let data = null;
+    try { data = await r.json(); } catch (_) { data = null; }
+    if (!r.ok) {
+      const e = new Error((data && data.message) || ('Request failed (HTTP ' + r.status + ')'));
+      e.status = r.status;
+      throw e;
+    }
+    return data;
+  }
+  const fileUrl = (rel, kind) => '/api/' + kind + '?path=' + encodeURIComponent(rel) + '&t=' + encodeURIComponent(TOKEN);
+
+  function setClientBanner(id, level, text) {
+    if (text) clientBanners.set(id, { level, text }); else clientBanners.delete(id);
+    renderBanners();
+  }
+  function renderBanners() {
+    const all = serverBanners.concat(Array.from(clientBanners.values()));
+    $('#banners').innerHTML = all.map((b) => '<div class="banner ' + b.level + '" role="alert">' + esc(b.text) + '</div>').join('');
+  }
+  function handleErr(e, quiet) {
+    if (e.network) setClientBanner('net', 'error', e.message);
+    else if (e.status === 401) setClientBanner('auth', 'error', 'This page belongs to an earlier server session. Reload it.');
+    else if (!quiet) toast(e.message, 'err');
+  }
+
+  async function refreshStatus() {
+    try {
+      status = await api('/api/status');
+      serverBanners = status.banners;
+      setClientBanner('net', 'error', '');
+      $('#root').textContent = status.root;
+    } catch (e) { handleErr(e); }
+  }
+
+  /* ------------------------------------------------------------ file list */
+  const qs = (extra) => new URLSearchParams(Object.assign({ type: S.type, q: S.q, filter: S.filter, sort: S.sort, order: S.order }, extra || {})).toString();
+
+  function cardHtml(it) {
+    const on = S.sel.has(it.rel);
+    const thumb = (it.type === 'image' || it.type === 'video') ? '<img loading="lazy" alt="" src="' + fileUrl(it.rel, 'thumb') + '">' : '';
+    let badge = '';
+    if (it.cleaned) badge = '<span class="bd">cleaned copy</span>';
+    else if (it.twin) badge = '<span class="bd">has cleaned copy</span>';
+    return '<article class="card' + (on ? ' sel' : '') + '" data-rel="' + esc(it.rel) + '">' +
+      '<div class="thumb"><span class="ico">' + ICON[it.type] + '</span>' + thumb +
+      '<label class="pick"><input type="checkbox"' + (on ? ' checked' : '') + ' aria-label="Select ' + esc(it.name) + '"></label>' +
+      '<span class="ext">' + esc(it.ext.slice(1)) + '</span></div>' +
+      '<div class="info"><div class="nm" title="' + esc(it.rel) + '">' + esc(it.name) + '</div>' +
+      '<div class="sub">' + esc(it.dir || '/') + '</div>' +
+      '<div class="sub"><span>' + fmtSize(it.size) + '</span><span>' + fmtDate(it.mtime) + '</span></div>' + badge + '</div></article>';
+  }
+
+  function renderChips() {
+    const defs = [['all', 'All'], ['image', 'Images'], ['video', 'Videos'], ['audio', 'Audio'], ['document', 'Docs'], ['other', 'Other']];
+    $('#chips').innerHTML = defs.map(([k, label]) =>
+      '<button type="button" class="chip' + (S.type === k ? ' on' : '') + '" data-type="' + k + '">' + label + '<b>' + (S.counts[k] || 0).toLocaleString() + '</b></button>').join('');
+  }
+
+  function renderListHead() {
+    const head = $('#count');
+    if (!S.scannedAt && !S.total) head.textContent = 'No scan yet';
+    else head.textContent = S.total.toLocaleString() + ' files, ' + fmtSize(S.totalSize) + (S.scannedAt ? ', scanned ' + ago(S.scannedAt) : '');
+    const all = $('#btnAll');
+    all.hidden = S.total === 0;
+    all.textContent = 'Select all ' + S.total.toLocaleString();
+    const empty = $('#empty');
+    if (S.total === 0 && !S.loading) {
+      empty.hidden = false;
+      empty.textContent = S.scannedAt ? 'No files match these filters.' : 'Tap Scan to inventory every accessible file in shared storage.';
+    } else empty.hidden = true;
+  }
+
+  async function loadList(reset) {
+    if (S.loading) { if (reset) S.pending = true; return; }
+    if (reset) { S.items = []; S.done = false; $('#grid').innerHTML = ''; }
+    if (S.done) return;
+    S.loading = true;
+    try {
+      const d = await api('/api/files?' + qs({ offset: S.items.length, limit: 60 }));
+      S.total = d.total; S.totalSize = d.total_size; S.counts = d.counts; S.scannedAt = d.scanned_at;
+      S.items = S.items.concat(d.items);
+      $('#grid').insertAdjacentHTML('beforeend', d.items.map(cardHtml).join(''));
+      S.done = S.items.length >= d.total;
+      renderChips();
+      if (!d.scanned_at && !autoScanned && status && status.storage.ok) { autoScanned = true; startScan(); }
+    } catch (e) { handleErr(e); }
+    finally {
+      S.loading = false;
+      renderListHead();
+      if (S.pending) { S.pending = false; loadList(true); }
+    }
+  }
+
+  /* ------------------------------------------------------------ selection */
+  function renderBar() {
+    const n = S.sel.size;
+    $('#bar').hidden = n === 0;
+    if (!n) return;
+    let size = 0;
+    S.sel.forEach((v) => { size += v.size; });
+    $('#barInfo').textContent = n.toLocaleString() + ' selected, ' + fmtSize(size);
+  }
+  function syncChecks() {
+    $$('.card').forEach((c) => {
+      const on = S.sel.has(c.dataset.rel);
+      c.classList.toggle('sel', on);
+      c.querySelector('input').checked = on;
+    });
+    renderBar();
+  }
+  function toggleSel(rel, on) {
+    if (on) {
+      const it = S.items.find((x) => x.rel === rel);
+      if (it) S.sel.set(rel, { rel, name: it.name, size: it.size, twin: it.twin, cleaned: it.cleaned });
+    } else S.sel.delete(rel);
+    syncChecks();
+  }
+  const clearSel = () => { S.sel.clear(); syncChecks(); };
+  async function selectAll() {
+    try {
+      const d = await api('/api/files?' + qs({ ids: 1 }));
+      d.sel.forEach((x) => S.sel.set(x.rel, x));
+      syncChecks();
+      toast(d.sel.length.toLocaleString() + ' files selected');
+    } catch (e) { handleErr(e); }
+  }
+
+  /* ------------------------------------------------------------ dialogs */
+  function confirmDlg(opts) {
+    return new Promise((resolve) => {
+      const d = $('#dlgConfirm');
+      $('#cfTitle').textContent = opts.title;
+      $('#cfBody').innerHTML = opts.body;
+      $('#cfSecureWrap').hidden = !opts.secure;
+      $('#cfSecure').checked = false;
+      const ok = $('#cfOk');
+      ok.textContent = opts.ok || 'Confirm';
+      ok.className = 'btn ' + (opts.danger ? 'danger' : 'primary');
+      d.returnValue = '';
+      d.addEventListener('close', () => resolve({ ok: d.returnValue === 'ok', secure: $('#cfSecure').checked }), { once: true });
+      d.showModal();
+    });
+  }
+
+  async function askDelete(files) {
+    if (!files.length) return;
+    const size = files.reduce((a, f) => a + f.size, 0);
+    const bare = files.filter((f) => !f.twin && !f.cleaned).length;
+    let body = '<p>Permanently delete <b>' + files.length.toLocaleString() + '</b> file' + (files.length === 1 ? '' : 's') + ' (' + fmtSize(size) + ')? This cannot be undone.</p>';
+    if (bare) body += '<p class="warnline">' + bare.toLocaleString() + ' of them ' + (bare === 1 ? 'has' : 'have') + ' no cleaned copy, so nothing will be left of ' + (bare === 1 ? 'it' : 'them') + '.</p>';
+    const r = await confirmDlg({ title: 'Delete files', body, ok: 'Delete ' + files.length.toLocaleString(), danger: true, secure: true });
+    if (!r.ok) return;
+    try {
+      await api('/api/delete', { paths: files.map((f) => f.rel), secure: r.secure, confirm: true });
+      toast('Deleting in the background');
+      clearSel();
+      pollJobs();
+    } catch (e) { handleErr(e); }
+  }
+
+  async function startClean(rels) {
+    if (!rels.length) return;
+    if (prefs.mode === 'replace') {
+      const r = await confirmDlg({
+        title: 'Replace originals', ok: 'Clean and replace', danger: true,
+        body: '<p>' + rels.length.toLocaleString() + ' file' + (rels.length === 1 ? '' : 's') + ' will be overwritten with the cleaned version. The originals are not kept.</p>'
+      });
+      if (!r.ok) return;
+    }
+    try {
+      await api('/api/clean', { paths: rels, mode: prefs.mode, engine: prefs.engine, notify: prefs.notify });
+      toast('Cleaning ' + rels.length.toLocaleString() + ' file' + (rels.length === 1 ? '' : 's') + ' in the background');
+      clearSel();
+      pollJobs();
+    } catch (e) { handleErr(e); }
+  }
+
+  function previewHtml(it) {
+    if (it.type === 'image') return '<img alt="" src="' + fileUrl(it.rel, 'file') + '">';
+    if (it.type === 'video') return '<video controls preload="metadata" playsinline src="' + fileUrl(it.rel, 'file') + '"></video>';
+    if (it.type === 'audio') return '<audio controls preload="none" src="' + fileUrl(it.rel, 'file') + '"></audio>';
+    return '<span class="ico">' + ICON.document + '</span>';
+  }
+
+  function renderTagList() {
+    const only = $('#onlyFlag') ? $('#onlyFlag').checked : false;
+    const rows = curTags.filter((t) => !only || FLAG.includes(t.category));
+    $('#tagList').innerHTML = rows.length ? rows.map((t) =>
+      '<div class="tag c-' + t.category + '"><div class="tk">' + esc(t.group) + (t.group ? ' ' : '') + '<em>' + esc(t.name) + '</em></div>' +
+      '<div class="tv">' + esc(t.value) + (t.truncated ? '\u2026' : '') + '</div></div>').join('') :
+      '<div class="muted">No tags in this view.</div>';
+  }
+
+  function renderMetaModal(d) {
+    curTags = d.tags;
+    const s = d.summary;
+    const flagged = FLAG.reduce((a, k) => a + s[k], 0);
+    let h = '';
+    if (!d.tags.length && !d.hidden_streams) {
+      h += '<div class="okline">No metadata found.</div>';
+    } else {
+      const segs = Object.keys(CATS).filter((k) => s[k]);
+      h += '<div class="expo" aria-hidden="true">' + segs.map((k) => '<i class="c-' + k + '" style="flex:' + s[k] + ';background:var(--c-' + k + ')"></i>').join('') + '</div>';
+      h += '<div class="sum">' + segs.map((k) => '<span class="pill c-' + k + '">' + CATS[k] + ' ' + s[k] + '</span>').join('') + '</div>';
+    }
+    d.notes.forEach((n) => { h += '<div class="banner warn">' + esc(n) + '</div>'; });
+    if (d.hidden_streams) h += '<div class="banner warn">' + d.hidden_streams + ' hidden data or attachment stream' + (d.hidden_streams === 1 ? '' : 's') + ' found. Cleaning removes them.</div>';
+    if (d.tags.length) {
+      h += '<div class="tagbar"><label class="chk"><input type="checkbox" id="onlyFlag"' + (flagged ? ' checked' : '') + '> Only AI, location, identity and software tags</label></div><div class="tags" id="tagList"></div>';
+    }
+    if (d.streams.length) {
+      h += '<div class="sect">Streams</div>' + d.streams.map((st) =>
+        '<div class="stream"><span>#' + esc(st.index) + ' ' + esc(st.type) + ' (' + esc(st.codec) + ')</span><span class="' + (st.hidden ? 'hid' : 'muted') + '">' +
+        (st.hidden ? 'hidden stream' : Object.keys(st.tags).length + ' tags') + '</span></div>').join('');
+    }
+    h += '<p class="hint">Read with ' + esc(d.engines.join(' and ') || 'no tool') + '. ' + fmtSize(d.size) + '.</p>';
+    $('#mBody').innerHTML = h;
+    if (d.tags.length) {
+      renderTagList();
+      $('#onlyFlag').addEventListener('change', renderTagList);
+    }
+  }
+
+  async function openMeta(rel) {
+    const it = S.items.find((x) => x.rel === rel) || { rel, name: rel.split('/').pop(), size: 0, type: 'document', ext: '', twin: false, cleaned: false };
+    curMeta = it;
+    $('#mTitle').textContent = it.name;
+    $('#mPath').textContent = rel;
+    $('#mPrev').innerHTML = previewHtml(it);
+    $('#mBody').innerHTML = '<div class="muted">Reading metadata</div>';
+    $('#dlgMeta').showModal();
+    try {
+      const d = await api('/api/metadata?path=' + encodeURIComponent(rel));
+      if (curMeta === it) renderMetaModal(d);
+    } catch (e) {
+      if (curMeta === it) $('#mBody').innerHTML = '<div class="banner error">' + esc(e.message) + '</div>';
+      handleErr(e, true);
+    }
+  }
+
+  /* ------------------------------------------------------------ jobs */
+  async function startRunAll() {
+    if (!confirm('Run a full scan and clean every supported original file in shared storage? Originals will be preserved; cleaned copies will be created beside them.')) return;
+    try { const d = await api('/api/run-all', { include_hidden: true, notify: prefs.notify }); toast('Full storage cleaning started'); pollJobs(); } catch (e) { handleErr(e); }
+  }
+
+  async function startScan() {
+    try {
+      await api('/api/scan', { include_hidden: prefs.hidden });
+      toast('Scan started');
+      pollJobs();
+    } catch (e) { handleErr(e); }
+  }
+
+  function resultLine(j, r) {
+    const nm = esc(r.rel.split('/').pop());
+    if (r.status === 'error') return '<li class="bad"><b>' + nm + '</b><span>' + esc(r.message) + '</span></li>';
+    if (r.status === 'skipped') return '<li><b>' + nm + '</b><span>' + esc(r.message) + '</span></li>';
+    if (j.kind === 'delete') return '<li class="good"><b>' + nm + '</b><span>Deleted, freed ' + fmtSize(r.before) + '</span></li>';
+    let t = fmtSize(r.before) + ' became ' + fmtSize(r.after) + ' using ' + esc(r.engines.join(' + '));
+    if (r.output && r.output !== r.rel) t += '<br>Saved as ' + esc(r.output.split('/').pop());
+    (r.notes || []).forEach((n) => { t += '<br>' + esc(n); });
+    if (r.verified && r.residual.length) t += '<em class="leftover">' + r.residual.length + ' sensitive tag' + (r.residual.length === 1 ? '' : 's') + ' remain: ' + esc(r.residual.slice(0, 4).join(', ')) + '</em>';
+    else if (r.verified) t += '<em class="clear">Verified: nothing sensitive left</em>';
+    return '<li class="good"><b>' + nm + '</b><span>' + t + '</span></li>';
+  }
+
+  function jobHtml(j) {
+    const fin = FINAL.includes(j.status);
+    const title = { scan: 'Scanning storage', clean: 'Cleaning metadata', delete: 'Deleting files' }[j.kind] || j.kind;
+    const indet = j.kind === 'scan' && !fin;
+    const pct = j.kind === 'scan' ? (fin ? 100 : 0) : (j.total ? Math.round(j.done / j.total * 100) : 0);
+    let line;
+    if (j.kind === 'scan') line = j.found.toLocaleString() + ' files found in ' + j.folders.toLocaleString() + ' folders' + (j.skipped_dirs ? ', ' + j.skipped_dirs + ' unreadable' : '');
+    else line = j.done + ' of ' + j.total + (j.failed ? ', ' + j.failed + ' failed' : '') + (j.current ? ', ' + j.current.split('/').pop() : '');
+    let act = '';
+    if (!fin) act = '<button class="btn ghost small" data-cancel="' + j.id + '" type="button">Cancel</button>';
+    else act = '<button class="btn ghost small" data-dismiss="' + j.id + '" type="button">Dismiss</button>';
+    let h = '<div class="job ' + j.status + '"><div class="jh"><div><b>' + title + '</b> <span class="jst">' + j.status + '</span></div>' + act + '</div>' +
+      '<div class="track' + (indet ? ' indet' : '') + '"><i style="width:' + (indet ? 35 : pct) + '%"></i></div><div class="jt">' + esc(line) + '</div>';
+    if (fin && j.message) h += '<div class="jmsg">' + esc(j.message) + '</div>';
+    if (j.notify_status && j.notify_status !== 'sent') h += '<div class="jmsg warnline">Notification not sent: ' + esc(j.notify_status) + '</div>';
+    if (fin && j.results.length) {
+      h += '<details data-job="' + j.id + '"' + (openJobs.has(j.id) ? ' open' : '') + '><summary>Details (' + j.results_total + ')</summary><ul>' + j.results.map((r) => resultLine(j, r)).join('') + '</ul></details>';
+    }
+    return h + '</div>';
+  }
+
+  function renderJobs() {
+    const list = lastJobs.filter((j) => !dismissed.has(j.id) && (!FINAL.includes(j.status) || j.kind !== 'scan' || j.status === 'failed'));
+    const key = JSON.stringify(list);
+    if (key === jobsKey) return;
+    jobsKey = key;
+    $('#jobs').innerHTML = list.map(jobHtml).join('');
+  }
+
+  function onFinished(j) {
+    if (j.kind === 'scan') toast(j.status === 'done' ? j.message : (j.message || 'Scan ' + j.status), j.status === 'failed' ? 'err' : '');
+    else toast(j.message || 'Job ' + j.status, j.status === 'failed' ? 'err' : '');
+    loadList(true);
+    refreshStatus();
+  }
+
+  async function pollJobs() {
+    try {
+      const d = await api('/api/jobs');
+      setClientBanner('net', 'error', '');
+      lastJobs = d.jobs;
+      let scanning = false;
+      d.jobs.forEach((j) => {
+        const fin = FINAL.includes(j.status);
+        const prev = seen.get(j.id);
+        if (fin && prev && !prev.fin) onFinished(j);
+        seen.set(j.id, { fin });
+        if (j.kind === 'scan' && !fin) scanning = true;
+      });
+      $('#btnScan').disabled = scanning;
+      const runningAll = d.jobs.some((j) => j.kind === 'run-all' && !FINAL.includes(j.status));
+      $('#btnRun').disabled = runningAll;
+      $('#btnRun').textContent = runningAll ? 'RUNNING…' : 'RUN ALL';
+      $('#btnScan').textContent = scanning ? 'Scanning' : 'Scan storage';
+      renderJobs();
+    } catch (e) { handleErr(e, true); }
+  }
+
+  /* ------------------------------------------------------------ wiring */
+  function bind() {
+    $('#optEngine').value = prefs.engine;
+    $('#optMode').value = prefs.mode;
+    $('#optNotify').checked = !!prefs.notify;
+    $('#optHidden').checked = !!prefs.hidden;
+    $('#optMonitor').checked = !!prefs.monitor;
+    const hint = () => { $('#engineHint').textContent = HINTS[prefs.engine] || ''; };
+    hint();
+    $('#optEngine').addEventListener('change', (e) => { prefs.engine = e.target.value; savePrefs(); hint(); });
+    $('#optMode').addEventListener('change', (e) => { prefs.mode = e.target.value; savePrefs(); });
+    $('#optNotify').addEventListener('change', (e) => { prefs.notify = e.target.checked; savePrefs(); });
+    $('#optHidden').addEventListener('change', (e) => { prefs.hidden = e.target.checked; savePrefs(); });
+    $('#optMonitor').addEventListener('change', async (e) => { prefs.monitor = e.target.checked; savePrefs(); try { await api('/api/monitor', { enabled: prefs.monitor }); toast(prefs.monitor ? 'Automatic monitoring enabled' : 'Automatic monitoring stopped'); } catch (err) { e.target.checked = false; prefs.monitor = false; savePrefs(); handleErr(err); } });
+
+    let timer;
+    $('#q').addEventListener('input', (e) => {
+      clearTimeout(timer);
+      timer = setTimeout(() => { S.q = e.target.value.trim(); loadList(true); }, 250);
+    });
+    $('#chips').addEventListener('click', (e) => {
+      const b = e.target.closest('.chip');
+      if (!b) return;
+      S.type = b.dataset.type;
+      renderChips();
+      loadList(true);
+    });
+    $('#filter').addEventListener('change', (e) => { S.filter = e.target.value; loadList(true); });
+    $('#sort').addEventListener('change', (e) => {
+      const parts = e.target.value.split(':');
+      S.sort = parts[0]; S.order = parts[1];
+      loadList(true);
+    });
+
+    const grid = $('#grid');
+    grid.addEventListener('change', (e) => {
+      if (!e.target.matches('.pick input')) return;
+      toggleSel(e.target.closest('.card').dataset.rel, e.target.checked);
+    });
+    grid.addEventListener('click', (e) => {
+      if (e.target.closest('.pick')) return;
+      const card = e.target.closest('.card');
+      if (card) openMeta(card.dataset.rel);
+    });
+    grid.addEventListener('error', (e) => { if (e.target.tagName === 'IMG') e.target.remove(); }, true);
+
+    $('#btnScan').addEventListener('click', startScan);
+    $('#btnRun').addEventListener('click', startRunAll);
+    $('#btnAll').addEventListener('click', selectAll);
+    $('#barClear').addEventListener('click', clearSel);
+    $('#barClean').addEventListener('click', () => startClean(Array.from(S.sel.keys())));
+    $('#barDelete').addEventListener('click', () => askDelete(Array.from(S.sel.values())));
+
+    const dm = $('#dlgMeta');
+    dm.addEventListener('click', (e) => { if (e.target === dm) dm.close(); });
+    dm.addEventListener('close', () => { curMeta = null; $('#mPrev').innerHTML = ''; });
+    $('#mClean').addEventListener('click', () => { const it = curMeta; dm.close(); if (it) startClean([it.rel]); });
+    $('#mDelete').addEventListener('click', () => {
+      const it = curMeta;
+      dm.close();
+      if (it) askDelete([{ rel: it.rel, name: it.name, size: it.size, twin: it.twin, cleaned: it.cleaned }]);
+    });
+
+    $('#jobs').addEventListener('click', async (e) => {
+      const c = e.target.closest('[data-cancel]');
+      const d = e.target.closest('[data-dismiss]');
+      if (c) { try { await api('/api/jobs/' + c.dataset.cancel + '/cancel', {}); toast('Cancelling after the current file'); } catch (err) { handleErr(err); } }
+      if (d) { dismissed.add(d.dataset.dismiss); renderJobs(); }
+    });
+    $('#jobs').addEventListener('toggle', (e) => {
+      const id = e.target.dataset && e.target.dataset.job;
+      if (!id) return;
+      if (e.target.open) openJobs.add(id); else openJobs.delete(id);
+    }, true);
+
+    new IntersectionObserver((entries) => { if (entries[0].isIntersecting) loadList(false); }, { rootMargin: '600px' }).observe($('#sentinel'));
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) { pollJobs(); refreshStatus(); } });
+  }
+
+  async function init() {
+    bind();
+    renderChips();
+    await refreshStatus();
+    await loadList(true);
+    pollJobs();
+    setInterval(() => { if (!document.hidden) pollJobs(); }, 1500);
+  }
+  init();
+})();
+</script>
+{% endraw %}
+</body>
+</html>

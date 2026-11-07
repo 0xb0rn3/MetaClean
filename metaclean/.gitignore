@@ -1,0 +1,12 @@
+__pycache__/
+*.py[cod]
+.env
+.venv/
+venv/
+*.log
+*.part
+*.metaclean.bak
+*.cleaned.*
+.cache/
+.DS_Store
+Thumbs.db
