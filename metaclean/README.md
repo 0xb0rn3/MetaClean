@@ -89,6 +89,10 @@ The dashboard's **Media & docs** view prioritises recognised user content rather
 - Detection is broader than cleaning support. Files labelled **view only** can be browsed but cannot be selected for batch cleaning unless a safe cleaner is registered.
 - RUN ALL and automatic monitoring still operate only on the existing safe-cleaner registry. Detecting a file does not make it eligible for cleaning.
 
+## Duplicate scanning
+
+Open **Find and remove duplicate files** in the dashboard and run a scan. MetaClean compares exact file contents with SHA-256 (using file size as a fast prefilter), so different names are detected and visually similar but re-encoded images are not treated as exact duplicates. Scanning does not modify files. For each group, select the copy to keep, then explicitly confirm removal. Each file is revalidated before deletion, and at least the selected keeper is retained. This uses ordinary filesystem deletion, not secure erasure.
+
 ## Workflow
 
 - **Scan** inventories all accessible regular files under `~/storage/shared`, including unknown extensions. Android's protected `Android/data` and `Android/obb` trees are excluded because ordinary Termux storage permission does not grant access to them.
@@ -103,6 +107,8 @@ This project is licensed under the **Apache License 2.0**; see [LICENSE](LICENSE
 Under Apache 2.0 Section 4(c) and (d), distributors of source or derivative works must retain applicable attribution notices and carry a readable copy of the applicable NOTICE attribution in the derivative's NOTICE file, source, accompanying documentation, or normal third-party notices display. The MetaClean dashboard and remote upload portal display the original-author credit.
 
 Modified files must be marked as changed, and forks must not imply endorsement by the original author. Consult the full LICENSE file for the exact terms.
+
+Duplicate scanning checks byte-for-byte identity only; it does not detect visually similar, resized, recompressed or edited media. The duplicate scan can include formats that MetaClean cannot clean because it hashes file contents without modifying them.
 
 ## Safety and limitations
 
