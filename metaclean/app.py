@@ -1002,10 +1002,12 @@ def run_duplicate_scan_job(job, include_hidden=True, notify=True):
         groups.sort(key=lambda group: (-group["wasted_bytes"], -group["size"], group["hash"]))
         duplicate_files = sum(group["copies"] for group in groups)
         wasted_bytes = sum(group["wasted_bytes"] for group in groups)
+        with JOBS_LOCK:
+            known_jobs = set(JOBS)
         with DUPLICATE_REPORTS_LOCK:
             DUPLICATE_REPORTS[job["id"]] = groups
             # Keep reports in step with the existing bounded job history.
-            stale = set(DUPLICATE_REPORTS) - set(JOBS)
+            stale = set(DUPLICATE_REPORTS) - known_jobs
             for old_id in stale:
                 DUPLICATE_REPORTS.pop(old_id, None)
         job["duplicate_groups"] = len(groups)
