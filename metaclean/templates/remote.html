@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="referrer" content="no-referrer">
+  <meta name="color-scheme" content="dark light">
+  <title>MetaClean · Remote upload</title>
+  <style>
+    :root{color-scheme:dark;--bg:#0e1217;--panel:#161c23;--panel2:#1d252e;--text:#e9eef3;--muted:#9aa8b6;--line:#2b3642;--accent:#5b7cff;--warn:#f5b84b}
+    *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:15px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif;padding:24px 14px}
+    main{max-width:620px;margin:7vh auto 0}.card{background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:clamp(18px,4vw,30px)}
+    h1{font-size:clamp(24px,5vw,34px);line-height:1.15;margin:0 0 10px}p{color:var(--muted)}.brand{font-weight:800;letter-spacing:.02em;color:#a9bbff;margin-bottom:22px}
+    label{display:block;font-weight:650;margin:18px 0 8px}input,select,button{font:inherit;width:100%;border-radius:10px;padding:12px;border:1px solid var(--line);background:var(--panel2);color:var(--text)}
+    input[type=file]{padding:16px;border-style:dashed}button{border:0;background:var(--accent);color:white;font-weight:750;margin-top:20px;cursor:pointer}
+    button:disabled{opacity:.6;cursor:wait}.note{border:1px solid #67512b;background:#332a1a;border-radius:10px;padding:12px;color:#f5dba7;font-size:13px;margin-top:18px}
+    .small{font-size:13px}.foot{margin-top:16px;text-align:center;font-size:12px}
+  </style>
+</head>
+<body>
+<main>
+  <div class="card">
+    <div class="brand">METACLEAN · LOCAL NETWORK</div>
+    <h1>Clean files using this host</h1>
+    <p>Select supported photos, videos, audio files or documents. This device's processor and installed cleaning tools will process them and return a ZIP archive.</p>
+    <form id="uploadForm" method="post" action="/remote/clean?access={{ access }}" enctype="multipart/form-data">
+      <label for="files">Files (up to {{ max_files }} per batch)</label>
+      <input id="files" name="files" type="file" multiple required accept="image/*,video/*,audio/*,.pdf,.docx,.xlsx,.pptx">
+      <label for="engine">Cleaning engine</label>
+      <select id="engine" name="engine">
+        <option value="auto">Auto (recommended)</option>
+        <option value="exiftool">ExifTool only</option>
+        <option value="both">Both available engines</option>
+      </select>
+      <button id="submitBtn" type="submit">Upload, clean and download ZIP</button>
+    </form>
+    <div class="note"><strong>Temporary processing:</strong> uploaded source files and cleaned outputs are held in a temporary host folder only while processing and transferring the ZIP. The host deletes that workspace when the download response closes. The original files on your phone or computer are not changed or deleted.</div>
+    <p class="small">Maximum request size: {{ max_mb }} MB. Only formats with a registered safe cleaner are accepted. Use this link only with people you trust on your private Wi-Fi/LAN.</p>
+  </div>
+  <div class="foot">MetaClean · The host does not add uploads to its personal file inventory.</div>
+</main>
+<script>
+(() => {
+  const form = document.getElementById('uploadForm');
+  const files = document.getElementById('files');
+  const button = document.getElementById('submitBtn');
+  form.addEventListener('submit', (event) => {
+    if (!files.files.length) { event.preventDefault(); return; }
+    if (files.files.length > {{ max_files }}) {
+      event.preventDefault();
+      alert('Choose no more than {{ max_files }} files at once.');
+      return;
+    }
+    button.disabled = true;
+    button.textContent = 'Uploading and cleaning…';
+  });
+})();
+</script>
+</body>
+</html>
