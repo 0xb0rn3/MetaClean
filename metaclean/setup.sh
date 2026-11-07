@@ -63,22 +63,9 @@ else
   exit 1
 fi
 
-step "Installing mat2 (optional)"
-mat2_works() { command -v mat2 >/dev/null 2>&1 && mat2 --version >/dev/null 2>&1; }
-if ! mat2_works; then
-  pkg install -y mat2 >/dev/null 2>&1 || true
-fi
-if ! mat2_works; then
-  python -c "import gi" >/dev/null 2>&1 || pip_install pycairo PyGObject || true
-  pip_install mutagen || true
-  pip_install mat2 || true
-fi
-if mat2_works; then
-  ok "mat2 $(mat2 --version 2>/dev/null | head -n 1)"
-else
-  warn "mat2 could not be installed here. MetaClean will use its built-in engines instead:"
-  warn "exiftool for images, ffmpeg for audio and video, qpdf and an Office scrubber for documents."
-fi
+step "MAT2 policy"
+echo "MAT2 is intentionally not installed on Termux."
+echo "MetaClean uses ExifTool, FFmpeg, qpdf and the built-in Office scrubber instead."
 
 mkdir -p "$HOME/.cache/metaclean"
 chmod +x "$APP_DIR/run.sh" "$APP_DIR/setup.sh" "$APP_DIR/app.py" 2>/dev/null || true
@@ -87,7 +74,7 @@ step "Summary"
 printf '  exiftool            %s\n' "$(exiftool -ver 2>/dev/null || echo missing)"
 printf '  ffmpeg              %s\n' "$(ffmpeg -version 2>/dev/null | head -n 1 | cut -d' ' -f3 || echo missing)"
 printf '  qpdf                %s\n' "$(qpdf --version 2>/dev/null | head -n 1 || echo missing)"
-printf '  mat2                %s\n' "$(mat2 --version 2>/dev/null | head -n 1 || echo missing)"
+printf '  mat2                disabled on Termux'
 if command -v termux-notification >/dev/null 2>&1; then
   printf '  termux-notification present\n'
 else
