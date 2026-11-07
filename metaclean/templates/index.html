@@ -581,8 +581,22 @@ dialog::backdrop{background:rgba(5,8,12,.62)}
 
   /* ------------------------------------------------------------ jobs */
   async function startRunAll() {
-    if (!confirm('Run a full scan and clean every supported original file in shared storage? Originals will be preserved; cleaned copies will be created beside them.')) return;
-    try { const d = await api('/api/run-all', { include_hidden: true, notify: prefs.notify }); toast('Full storage cleaning started'); pollJobs(); } catch (e) { handleErr(e); }
+    let prompt = 'Run a full scan and clean every supported original file in storage?';
+    if (prefs.deleteOriginal && prefs.mode === 'copy') {
+      prompt += ' A cleaned copy will be created first, then each original will be deleted only when its own cleanup succeeds.';
+    } else {
+      prompt += ' Originals will be preserved; cleaned copies will be created beside them.';
+    }
+    if (!confirm(prompt)) return;
+    try {
+      const d = await api('/api/run-all', {
+        include_hidden: true,
+        notify: prefs.notify,
+        delete_original: prefs.deleteOriginal && prefs.mode === 'copy'
+      });
+      toast('Full storage cleaning started');
+      pollJobs();
+    } catch (e) { handleErr(e); }
   }
 
   async function startScan() {
