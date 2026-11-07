@@ -693,11 +693,15 @@ dialog::backdrop{background:rgba(5,8,12,.62)}
     box.hidden = !host.enabled;
     if (!host.enabled) { box.innerHTML = ''; return; }
     const urls = host.urls || [];
-    box.innerHTML = urls.length
+    const wake = host.wake_lock;
+    const wakeNote = wake && wake.message
+      ? '<p class="hint ' + (wake.ok ? '' : 'warnline') + '">' + esc(wake.message) + '</p>'
+      : '';
+    box.innerHTML = (urls.length
       ? '<p class="hint">Share one of these links with devices on the same private Wi-Fi/LAN:</p>' + urls.map((url) =>
           '<div style="display:flex;gap:6px;margin:7px 0"><input style="min-width:0;flex:1" readonly value="' + esc(url) + '"><button class="btn ghost small" type="button" data-host-copy="' + esc(url) + '">Copy</button></div>'
         ).join('')
-      : '<p class="hint">Hosting is enabled, but no private IPv4 address was detected. Connect to Wi-Fi or Ethernet and refresh this page.</p>';
+      : '<p class="hint">Hosting is enabled, but no private IPv4 address was detected. Connect to Wi-Fi or Ethernet and refresh this page.</p>') + wakeNote;
   }
 
   function bind() {
