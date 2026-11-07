@@ -46,9 +46,20 @@ TYPES = {
     "document": {".pdf", ".docx", ".xlsx", ".pptx"},
 }
 EXT_TYPE = {ext: kind for kind, exts in TYPES.items() for ext in exts}
+# Discovery is broader than cleaning support: detection never implies cleanability.
+DISCOVERY_TYPES = {
+    "image": {".jpg",".jpeg",".jpe",".png",".gif",".webp",".heic",".heif",".avif",".bmp",".tif",".tiff",".dng",".cr2",".cr3",".nef",".arw",".raf",".rw2",".orf",".pef"},
+    "video": {".mp4",".m4v",".mkv",".mov",".3gp",".3g2",".webm",".avi",".wmv",".mpg",".mpeg",".ts",".m2ts",".mts"},
+    "audio": {".mp3",".m4a",".aac",".wav",".flac",".ogg",".opus",".amr",".aiff",".aif",".wma",".mid",".midi"},
+    "document": {".pdf",".doc",".docx",".docm",".odt",".rtf",".txt",".md",".csv",".tsv",".xls",".xlsx",".xlsm",".ods",".ppt",".pptx",".pptm",".odp",".epub"},
+}
+DISCOVERY_EXT_TYPE = {ext: kind for kind, extensions in DISCOVERY_TYPES.items() for ext in extensions}
 OOXML_EXT = {".docx", ".xlsx", ".pptx"}
 EXIF_WRITE = {".jpg", ".jpeg", ".png", ".webp", ".heic", ".mp4", ".mov", ".mp3", ".flac"}
 SKIP_DIRS = {"Android/data", "Android/obb"}
+NOISE_DIRS = {".thumbnails", ".cache", "cache", "caches", "tmp", "temp", "thumbnails", "lost+found", "$recycle.bin", "recycle.bin"}
+NOISE_FILES = {".nomedia", ".ds_store", "thumbs.db", "desktop.ini"}
+NOISE_SUFFIXES = (".tmp", ".temp", ".part", ".partial", ".crdownload", ".download", ".lock", ".swp", ".log", ".bak")
 
 for _ext, _mime in {
     ".heic": "image/heic",
@@ -654,6 +665,50 @@ INDEX = {"items": {}, "scanned_at": None}
 INDEX_LOCK = threading.Lock()
 
 
+def is_noise_path(rel):
+    parts = [part.lower() for part in rel.replace("\\", "/").split("/") if part]
+    directory_parts = parts if rel.endswith("/") else parts[:-1]
+    if any(part in NOISE_DIRS for part in directory_parts):
+        return True
+    name = parts[-1] if parts else ""
+    if name in NOISE_FILES or name.startswith(".~"):
+        return True
+    return name.endswith("~") or name.endswith(NOISE_SUFFIXES)
+
+
+def detect_file_type(full, ext):
+    kind = DISCOVERY_EXT_TYPE.get(ext)
+    if kind:
+        return kind
+    mime = (mimetypes.guess_type(full, strict=False)[0] or "").lower()
+    if mime.startswith("image/"): return "image"
+    if mime.startswith("video/"): return "video"
+    if mime.startswith("audio/"): return "audio"
+    if mime.startswith("text/") or mime in {
+        "application/pdf", "application/rtf", "application/msword",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        "application/vnd.oasis.opendocument.text", "application/vnd.oasis.opendocument.spreadsheet",
+        "application/vnd.oasis.opendocument.presentation", "application/epub+zip",
+    }:
+        return "document"
+    try:
+        with open(full, "rb") as handle:
+            head = handle.read(32)
+    except OSError:
+        return "other"
+    if head.startswith((b"\xff\xd8\xff", b"\x89PNG\r\n\x1a\n", b"GIF87a", b"GIF89a", b"BM", b"II*\x00", b"MM\x00*")):
+        return "image"
+    if head.startswith(b"RIFF") and head[8:12] == b"WEBP": return "image"
+    if head.startswith(b"%PDF-"): return "document"
+    if len(head) >= 12 and head[4:8] == b"ftyp":
+        return "image" if head[8:12] in (b"avif",b"avis",b"heic",b"heix",b"hevc",b"mif1") else "video"
+    if head.startswith((b"ID3", b"fLaC", b"OggS")) or (head.startswith(b"RIFF") and head[8:12] == b"WAVE"):
+        return "audio"
+    return "other"
+
+
 def entry_for(full, st=None):
     st = st or os.stat(full)
     rel = rel_of(full)
@@ -665,7 +720,7 @@ def entry_for(full, st=None):
         "dir": os.path.dirname(rel),
         "size": st.st_size,
         "mtime": st.st_mtime,
-        "type": EXT_TYPE.get(ext, "other"),
+        "type": detect_file_type(full, ext),
         "supported": ext in EXT_TYPE,
         "ext": ext,
         "cleaned": is_cleaned_name(name),
@@ -767,9 +822,13 @@ def run_scan_job(job, include_hidden):
                     continue
                 try:
                     if entry.is_dir(follow_symlinks=False):
-                        if os.path.relpath(entry.path, ROOT) not in SKIP_DIRS:
+                        rel_dir = os.path.relpath(entry.path, ROOT)
+                        if rel_dir not in SKIP_DIRS and not is_noise_path(rel_dir + "/"):
                             stack.append(entry.path)
                     elif entry.is_file(follow_symlinks=False):
+                        rel_file = os.path.relpath(entry.path, ROOT)
+                        if is_noise_path(rel_file):
+                            continue
                         ent = entry_for(entry.path, entry.stat(follow_symlinks=False))
                         items[ent["rel"]] = ent
                         job["found"] = len(items)
@@ -1052,10 +1111,13 @@ def api_files():
         items = list(INDEX["items"].values())
         scanned_at = INDEX["scanned_at"]
     base = [e for e in items if (not query or query in e["rel"].lower()) and _filter_ok(flt, e)]
-    counts = {"all": len(base), "image": 0, "video": 0, "audio": 0, "document": 0, "other": 0}
+    counts = {"all": 0, "image": 0, "video": 0, "audio": 0, "document": 0, "other": 0}
     for ent in base:
         counts[ent["type"]] += 1
-    chosen = base if ftype == "all" else [e for e in base if e["type"] == ftype]
+    counts["all"] = sum(counts[k] for k in ("image", "video", "audio", "document"))
+    # Keep unknown and non-media files available in the explicit Other tab.
+    chosen = ([e for e in base if e["type"] != "other"] if ftype == "all"
+              else [e for e in base if e["type"] == ftype])
     if sort == "name":
         chosen.sort(key=lambda e: e["name"].lower(), reverse=reverse)
     elif sort == "size":
@@ -1082,7 +1144,9 @@ def api_metadata():
     full = resolve(request.args.get("path", ""))
     T = tools()
     ext = os.path.splitext(full)[1].lower()
-    ftype = EXT_TYPE[ext]
+    ftype = entry_for(full)["type"]
+    if ftype == "other":
+        raise ApiError("This file is not recognised as a media or document format.", 415, "unsupported_type")
     if not (T["exiftool"]["available"] or T["mat2"]["available"]):
         raise ApiError("No inspection tool is available. Install exiftool: pkg install exiftool", 503, "missing_tool")
     rows, notes, engines = [], [], []
@@ -1137,7 +1201,7 @@ def api_file():
 @app.get("/api/thumb")
 def api_thumb():
     full = resolve(request.args.get("path", ""))
-    ftype = EXT_TYPE[os.path.splitext(full)[1].lower()]
+    ftype = entry_for(full)["type"]
     if ftype not in ("image", "video") or not tools()["ffmpeg"]["available"]:
         raise ApiError("No thumbnail available.", 404, "no_thumb")
     thumb = make_thumb(full, ftype)
@@ -1222,9 +1286,11 @@ def save_monitor_setting(enabled):
 def monitor_snapshot():
     snapshot = {}
     for current, dirs, files in os.walk(ROOT, followlinks=False):
-        dirs[:] = [d for d in dirs if os.path.relpath(os.path.join(current, d), ROOT) not in SKIP_DIRS]
+        dirs[:] = [d for d in dirs if os.path.relpath(os.path.join(current, d), ROOT) not in SKIP_DIRS
+                   and not is_noise_path(os.path.relpath(os.path.join(current, d), ROOT) + "/")]
         for name in files:
-            if os.path.splitext(name)[1].lower() not in EXT_TYPE or is_cleaned_name(name):
+            rel = os.path.relpath(os.path.join(current, name), ROOT)
+            if is_noise_path(rel) or os.path.splitext(name)[1].lower() not in EXT_TYPE or is_cleaned_name(name):
                 continue
             full = os.path.join(current, name)
             try:
@@ -1247,11 +1313,12 @@ def monitor_loop():
         try:
             discovered = []
             for current, dirs, files in os.walk(ROOT, followlinks=False):
-                dirs[:] = [d for d in dirs if os.path.relpath(os.path.join(current, d), ROOT) not in SKIP_DIRS]
+                dirs[:] = [d for d in dirs if os.path.relpath(os.path.join(current, d), ROOT) not in SKIP_DIRS
+                           and not is_noise_path(os.path.relpath(os.path.join(current, d), ROOT) + "/")]
                 for name in files:
                     full = os.path.join(current, name)
                     ext = os.path.splitext(name)[1].lower()
-                    if ext not in EXT_TYPE or is_cleaned_name(name):
+                    if is_noise_path(os.path.relpath(full, ROOT)) or ext not in EXT_TYPE or is_cleaned_name(name):
                         continue
                     try:
                         st = os.stat(full, follow_symlinks=False)
