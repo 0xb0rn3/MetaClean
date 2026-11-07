@@ -1,6 +1,6 @@
 # MetaClean for Termux
 
-MetaClean is a localhost-only Flask dashboard for inventorying shared Android storage, inspecting metadata, and cleaning supported files into separate `.cleaned` copies.
+MetaClean is a Flask dashboard and optional private-LAN processing server for Android/Termux. It inventories shared Android storage, inspects metadata, and cleans supported files into separate `.cleaned` copies. When Host mode is enabled, the Termux device can receive uploads from other phones and computers and process them locally.
 
 ## Installation options
 
@@ -60,6 +60,8 @@ MAT2 is deliberately skipped on Termux. MetaClean does not probe or select it th
 
 Open the dashboard's **Cleaning options → Host for devices on your local network**, then select **Start hosting**. Copy one of the generated links and open it on a device connected to the same private Wi-Fi/LAN. The remote upload page accepts up to 25 files per batch (maximum 1 GB request) and returns a ZIP of cleaned copies processed by the Termux device.
 
+Termux is a real LAN host in this mode, not just a client: MetaClean listens on the network interface, discovers the phone's active private IPv4 addresses, and runs the same authenticated upload-and-clean pipeline used by Linux and Windows. While hosting is enabled it requests `termux-wake-lock`; stopping Host mode releases the lock. This improves reliability while the screen is off, but uses more battery and cannot override every Android manufacturer power-management restriction. For this feature, install both the `termux-api` package and the separate Termux:API Android app from the same installation source as Termux. The dashboard shows a warning if the wake-lock request fails.
+
 The upload portal is separate from the personal-storage dashboard. Remote clients cannot browse the host's shared storage. Uploaded sources and cleaned outputs are kept in a temporary host directory only during processing and download, then removed when the response closes. Original files on the uploading phone/computer are not modified. Stop hosting to revoke the current link. Do not port-forward the host or expose it to the public internet.
 
 ## Delete original after successful cleanup
@@ -106,4 +108,4 @@ Modified files must be marked as changed, and forks must not imply endorsement b
 
 MetaClean is not a secure-erasure utility. Flash storage wear levelling, filesystem snapshots, cloud backups, and Android media caches make guaranteed forensic erasure impossible through ordinary file deletion. The automatic workflow never overwrites originals. Metadata tools have format-specific coverage; a clean verification scan is evidence only for the tags those tools can inspect, not proof that every hidden provenance or C2PA structure is absent. Keep backups of important files.
 
-The normal dashboard and API remain local-only. The network listener is guarded so only the separate upload portal can be reached by private-LAN clients after Host mode is explicitly enabled and a sharing link is supplied. Termux:API notifications require both the `termux-api` package and the matching Android Termux:API app.
+The normal dashboard and API remain local-only. The network listener is guarded so only the separate upload portal can be reached by private-LAN clients after Host mode is explicitly enabled and a sharing link is supplied. Termux notifications and Host-mode wake locks require both the `termux-api` package and the matching Android Termux:API app.
