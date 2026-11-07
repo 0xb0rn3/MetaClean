@@ -123,6 +123,27 @@ class PlatformAndHostTests(unittest.TestCase):
                 with metaclean.DUPLICATE_REPORTS_LOCK:
                     metaclean.DUPLICATE_REPORTS.pop(job["id"], None)
 
+    def test_duplicate_scan_does_not_count_hard_links_as_extra_data(self):
+        if not hasattr(os, "link"):
+            self.skipTest("Hard links are not supported on this platform.")
+        with tempfile.TemporaryDirectory() as folder:
+            first = os.path.join(folder, "first.bin")
+            second = os.path.join(folder, "second.bin")
+            with open(first, "wb") as handle:
+                handle.write(b"one physical file")
+            try:
+                os.link(first, second)
+            except OSError as exc:
+                self.skipTest(f"Hard links are unavailable in this environment: {exc}")
+            job = metaclean.new_job("duplicate-scan")
+            try:
+                with mock.patch.object(metaclean, "ROOT", folder):
+                    metaclean.run_duplicate_scan_job(job, True, False)
+                self.assertEqual(job["duplicate_groups"], 0)
+            finally:
+                with metaclean.DUPLICATE_REPORTS_LOCK:
+                    metaclean.DUPLICATE_REPORTS.pop(job["id"], None)
+
     def test_duplicate_removal_keeps_selected_copy(self):
         with tempfile.TemporaryDirectory() as folder:
             keep_path = os.path.join(folder, "keep.bin")
