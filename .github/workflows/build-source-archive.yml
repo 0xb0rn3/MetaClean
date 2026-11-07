@@ -1,0 +1,35 @@
+name: Validate source and rebuild archive
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "metaclean/**"
+      - ".github/workflows/build-source-archive.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  validate-and-archive:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Validate Python and shell syntax
+        run: |
+          python -m py_compile metaclean/app.py
+          bash -n metaclean/setup.sh
+          bash -n metaclean/run.sh
+      - name: Rebuild source archive
+        run: tar -cJf MetaClean-Termux.tar.xz metaclean
+      - name: Commit refreshed archive
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add MetaClean-Termux.tar.xz
+          if ! git diff --cached --quiet; then
+            git commit -m "chore: refresh Termux source archive"
+            git push
+          fi
