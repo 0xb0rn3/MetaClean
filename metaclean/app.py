@@ -778,6 +778,8 @@ def index_remove(rel):
 
 JOBS = {}
 JOBS_LOCK = threading.Lock()
+DUPLICATE_REPORTS = {}
+DUPLICATE_REPORTS_LOCK = threading.Lock()
 
 
 def new_job(kind, total=0):
@@ -874,6 +876,239 @@ def run_scan_job(job, include_hidden):
             finish_job(job, "done", f"Found {len(items)} files in {folders} folders.")
     except Exception as exc:
         app.logger.exception("scan failed")
+        finish_job(job, "failed", explain(exc))
+
+
+
+def sha256_file(path, cancel=None):
+    """Return an exact SHA-256 digest, checking cancellation between read blocks."""
+    digest = hashlib.sha256()
+    with open(path, "rb") as handle:
+        while True:
+            if cancel is not None and cancel.is_set():
+                return None
+            block = handle.read(1024 * 1024)
+            if not block:
+                break
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def run_duplicate_scan_job(job, include_hidden=True, notify=True):
+    """Find exact byte-identical files under ROOT without changing any source file."""
+    job["status"] = "running"
+    job["started"] = time.time()
+    size_buckets = {}
+    folders = skipped = scanned = 0
+    try:
+        stack = [ROOT]
+        while stack:
+            if job["_cancel"].is_set():
+                finish_job(job, "cancelled", "Duplicate scan cancelled. No files were changed.")
+                return
+            current = stack.pop()
+            folders += 1
+            job["folders"] = folders
+            job["current"] = os.path.relpath(current, ROOT) if current != ROOT else ""
+            try:
+                with os.scandir(current) as entries:
+                    for entry in entries:
+                        if job["_cancel"].is_set():
+                            break
+                        if entry.name.startswith(".") and not include_hidden:
+                            continue
+                        try:
+                            if entry.is_dir(follow_symlinks=False):
+                                rel_dir = os.path.relpath(entry.path, ROOT)
+                                if rel_dir not in SKIP_DIRS and not is_noise_path(rel_dir + "/"):
+                                    stack.append(entry.path)
+                            elif entry.is_file(follow_symlinks=False):
+                                rel = os.path.relpath(entry.path, ROOT)
+                                if is_noise_path(rel):
+                                    continue
+                                st = entry.stat(follow_symlinks=False)
+                                size_buckets.setdefault(st.st_size, []).append({
+                                    "rel": rel,
+                                    "size": st.st_size,
+                                    "mtime": st.st_mtime,
+                                    "mtime_ns": st.st_mtime_ns,
+                                    "inode": getattr(st, "st_ino", None),
+                                })
+                                scanned += 1
+                                job["found"] = scanned
+                        except OSError:
+                            continue
+            except OSError:
+                skipped += 1
+                job["skipped_dirs"] = skipped
+
+        if job["_cancel"].is_set():
+            finish_job(job, "cancelled", "Duplicate scan cancelled. No files were changed.")
+            return
+
+        candidates = [
+            item for group in size_buckets.values() if len(group) > 1 for item in group
+        ]
+        job["total"] = len(candidates)
+        hashes = {}
+        for item in candidates:
+            if job["_cancel"].is_set():
+                finish_job(job, "cancelled", "Duplicate scan cancelled. No files were changed.")
+                return
+            job["current"] = item["rel"]
+            full = os.path.join(ROOT, item["rel"])
+            try:
+                before = os.stat(full, follow_symlinks=False)
+                if not os.path.isfile(full) or before.st_size != item["size"]:
+                    job["failed"] += 1
+                    job["done"] += 1
+                    continue
+                digest = sha256_file(full, job["_cancel"])
+                if digest is None:
+                    finish_job(job, "cancelled", "Duplicate scan cancelled. No files were changed.")
+                    return
+                after = os.stat(full, follow_symlinks=False)
+                if (
+                    before.st_size != after.st_size
+                    or before.st_mtime_ns != after.st_mtime_ns
+                    or getattr(before, "st_ino", None) != getattr(after, "st_ino", None)
+                ):
+                    job["failed"] += 1
+                    job["done"] += 1
+                    continue
+                record = {
+                    "rel": item["rel"],
+                    "name": os.path.basename(item["rel"]),
+                    "size": item["size"],
+                    "mtime": item["mtime"],
+                }
+                hashes.setdefault((item["size"], digest), []).append(record)
+            except (OSError, PermissionError):
+                job["failed"] += 1
+            finally:
+                job["done"] += 1
+
+        groups = []
+        for (size, digest), files in hashes.items():
+            if len(files) < 2:
+                continue
+            files.sort(key=lambda entry: (entry["mtime"], entry["rel"].lower()))
+            groups.append({
+                "hash": digest,
+                "size": size,
+                "files": files,
+                "copies": len(files),
+                "wasted_bytes": size * (len(files) - 1),
+            })
+        groups.sort(key=lambda group: (-group["wasted_bytes"], -group["size"], group["hash"]))
+        duplicate_files = sum(group["copies"] for group in groups)
+        wasted_bytes = sum(group["wasted_bytes"] for group in groups)
+        with DUPLICATE_REPORTS_LOCK:
+            DUPLICATE_REPORTS[job["id"]] = groups
+            # Keep reports in step with the existing bounded job history.
+            stale = set(DUPLICATE_REPORTS) - set(JOBS)
+            for old_id in stale:
+                DUPLICATE_REPORTS.pop(old_id, None)
+        job["duplicate_groups"] = len(groups)
+        job["duplicate_files"] = duplicate_files
+        job["wasted_bytes"] = wasted_bytes
+        summary = (
+            f"Found {len(groups)} exact duplicate groups across {duplicate_files} files; "
+            f"{fmt_bytes(wasted_bytes)} could be reclaimed by keeping one copy per group."
+            if groups else f"No exact duplicate files found among {scanned} scanned files."
+        )
+        if job["failed"]:
+            summary += f" {job['failed']} candidate files changed or could not be read."
+        finish_job(job, "done", summary)
+        if notify and IS_TERMUX:
+            job["notify_status"] = send_notification("MetaClean duplicate scan finished", summary, job["id"])
+    except Exception as exc:
+        app.logger.exception("duplicate scan failed")
+        finish_job(job, "failed", explain(exc))
+
+
+def fmt_bytes(value):
+    value = float(value or 0)
+    for unit in ("B", "KB", "MB", "GB", "TB"):
+        if value < 1024 or unit == "TB":
+            return f"{value:.0f} {unit}" if unit == "B" else f"{value:.1f} {unit}"
+        value /= 1024
+
+
+def run_duplicate_delete_job(job, selections, report):
+    """Delete matching extra copies only after validating one keeper per group."""
+    job["status"] = "running"
+    job["started"] = time.time()
+    removed = 0
+    freed = 0
+    try:
+        with CLEAN_LOCK:
+            for selection in selections:
+                if job["_cancel"].is_set():
+                    break
+                expected_hash = selection["hash"]
+                keep_rel = selection["keep"]
+                group = next((entry for entry in report if entry["hash"] == expected_hash), None)
+                if not group:
+                    job["failed"] += 1
+                    job["done"] += 1
+                    job["results"].append({
+                        "rel": keep_rel, "status": "error",
+                        "message": "Duplicate report is no longer available. Run a new duplicate scan.",
+                    })
+                    continue
+                job["current"] = keep_rel
+                try:
+                    keep_full = resolve(keep_rel)
+                    if sha256_file(keep_full) != expected_hash:
+                        raise ApiError("The selected keeper changed since the scan. No files in this group were deleted.")
+                except Exception as exc:
+                    job["failed"] += 1
+                    job["done"] += len(group["files"]) - 1
+                    job["results"].append({"rel": keep_rel, "status": "error", "message": explain(exc)})
+                    continue
+
+                for item in group["files"]:
+                    if item["rel"] == keep_rel:
+                        continue
+                    if job["_cancel"].is_set():
+                        break
+                    rel = item["rel"]
+                    job["current"] = rel
+                    try:
+                        full = resolve(rel)
+                        current_stat = os.stat(full, follow_symlinks=False)
+                        if current_stat.st_size != group["size"] or sha256_file(full) != expected_hash:
+                            raise ApiError("File changed since the scan; it was not deleted.")
+                        os.remove(full)
+                        index_remove(rel)
+                        removed += 1
+                        freed += group["size"]
+                        job["results"].append({
+                            "rel": rel, "status": "ok", "before": group["size"],
+                            "message": f"Deleted duplicate. Kept: {keep_rel}",
+                        })
+                    except Exception as exc:
+                        job["failed"] += 1
+                        job["results"].append({
+                            "rel": rel, "status": "error", "message": explain(exc),
+                        })
+                    finally:
+                        job["done"] += 1
+
+        summary = f"Removed {removed} duplicate copies; reclaimed {fmt_bytes(freed)}."
+        if job["failed"]:
+            summary += f" {job['failed']} files or groups were skipped because they changed or could not be accessed."
+        if job["_cancel"].is_set():
+            finish_job(job, "cancelled", "Removal cancelled. " + summary)
+        elif job["failed"] and not removed:
+            finish_job(job, "failed", summary)
+        else:
+            finish_job(job, "done", summary)
+        if IS_TERMUX:
+            job["notify_status"] = send_notification("MetaClean duplicate removal finished", summary, job["id"])
+    except Exception as exc:
+        app.logger.exception("duplicate removal failed")
         finish_job(job, "failed", explain(exc))
 
 
@@ -1520,6 +1755,80 @@ def api_scan():
     job = new_job("scan")
     POOL.submit(run_scan_job, job, bool(body.get("include_hidden")))
     return jsonify(job_id=job["id"], reused=False)
+
+
+@app.post("/api/duplicates")
+def api_duplicate_scan():
+    body = request.get_json(silent=True) or {}
+    state = storage_state()
+    if not state["ok"]:
+        raise ApiError(state["reason"], 503, "storage_unavailable")
+    with JOBS_LOCK:
+        for existing in JOBS.values():
+            if existing["kind"] == "duplicate-scan" and existing["status"] in ("queued", "running"):
+                return jsonify(job_id=existing["id"], reused=True)
+    job = new_job("duplicate-scan")
+    POOL.submit(run_duplicate_scan_job, job, bool(body.get("include_hidden", True)), bool(body.get("notify", True)))
+    return jsonify(job_id=job["id"], reused=False)
+
+
+@app.get("/api/duplicates/<job_id>")
+def api_duplicate_report(job_id):
+    job = JOBS.get(job_id)
+    if not job or job.get("kind") != "duplicate-scan":
+        raise ApiError("Unknown duplicate scan report.", 404, "no_duplicate_report")
+    if job["status"] != "done":
+        raise ApiError("The duplicate scan has not finished successfully.", 409, "duplicate_scan_incomplete")
+    with DUPLICATE_REPORTS_LOCK:
+        report = DUPLICATE_REPORTS.get(job_id)
+    if report is None:
+        raise ApiError("This duplicate report has expired. Run another scan.", 410, "duplicate_report_expired")
+    offset = int_arg("offset", 0, 0, 10000000)
+    limit = int_arg("limit", 30, 1, 100)
+    return jsonify(
+        total_groups=len(report),
+        total_files=job.get("duplicate_files", 0),
+        wasted_bytes=job.get("wasted_bytes", 0),
+        offset=offset,
+        next_offset=offset + limit if offset + limit < len(report) else None,
+        groups=report[offset:offset + limit],
+    )
+
+
+@app.post("/api/duplicates/<job_id>/remove")
+def api_duplicate_remove(job_id):
+    body = request.get_json(silent=True) or {}
+    if body.get("confirm") is not True:
+        raise ApiError("Duplicate removal must be explicitly confirmed.", 400, "not_confirmed")
+    job = JOBS.get(job_id)
+    if not job or job.get("kind") != "duplicate-scan" or job.get("status") != "done":
+        raise ApiError("A completed duplicate scan is required.", 409, "duplicate_scan_incomplete")
+    with DUPLICATE_REPORTS_LOCK:
+        report = DUPLICATE_REPORTS.get(job_id)
+    if report is None:
+        raise ApiError("This duplicate report has expired. Run another scan.", 410, "duplicate_report_expired")
+    keepers = body.get("keepers")
+    if not isinstance(keepers, list) or not keepers or len(keepers) > 100:
+        raise ApiError("Select at least one duplicate group (maximum 100 per removal).", 400, "bad_duplicate_selection")
+    known = {entry["hash"]: entry for entry in report}
+    selections = []
+    seen_hashes = set()
+    for item in keepers:
+        if not isinstance(item, dict):
+            raise ApiError("Invalid duplicate keeper selection.", 400, "bad_duplicate_selection")
+        digest = item.get("hash")
+        keep_rel = item.get("keep")
+        group = known.get(digest)
+        if not isinstance(digest, str) or digest in seen_hashes or not group:
+            raise ApiError("Duplicate group selection is invalid or repeated.", 400, "bad_duplicate_selection")
+        if not isinstance(keep_rel, str) or keep_rel not in {f["rel"] for f in group["files"]}:
+            raise ApiError("Choose one existing file to keep in every selected group.", 400, "bad_duplicate_keeper")
+        seen_hashes.add(digest)
+        selections.append({"hash": digest, "keep": keep_rel})
+    total = sum(len(known[item["hash"]]["files"]) - 1 for item in selections)
+    job = new_job("duplicate-delete", total)
+    POOL.submit(run_duplicate_delete_job, job, selections, report)
+    return jsonify(job_id=job["id"], total=total)
 
 
 @app.post("/api/clean")
