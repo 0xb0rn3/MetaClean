@@ -1,10 +1,10 @@
-name: Expand bundled source
+name: Verify and expand MetaClean source
 
 on:
   push:
     branches: [main]
     paths:
-      - MetaClean-Termux.tar.xz
+      - .github/archive-parts/part-*.b64
       - .github/workflows/expand-source.yml
 
 permissions:
@@ -16,14 +16,23 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
-      - name: Expand project source
-        run: tar -xJf MetaClean-Termux.tar.xz
-      - name: Commit browsable source tree
+      - name: Rebuild and verify source archive
+        shell: bash
         run: |
+          set -euo pipefail
+          cat .github/archive-parts/part-*.b64 | base64 --decode > MetaClean-Termux.tar.xz
+          echo "e00d34258862eebc63db4220bc9722f65702f0321f5308662ddaf0705de1a761  MetaClean-Termux.tar.xz" | sha256sum --check -
+      - name: Expand source
+        run: tar -xJf MetaClean-Termux.tar.xz
+      - name: Commit source tree and archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf .github/archive-parts
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add metaclean
+          git add -A MetaClean-Termux.tar.xz metaclean .github/archive-parts
           if ! git diff --cached --quiet; then
-            git commit -m "chore: expand MetaClean source bundle"
+            git commit -m "chore: publish verified MetaClean source"
             git push
           fi
