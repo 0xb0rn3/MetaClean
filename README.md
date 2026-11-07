@@ -1,8 +1,8 @@
 # MetaClean
 
-**MetaClean** is a localhost-only metadata inspection and sanitization dashboard for Android devices running [Termux](https://termux.dev/).
+**MetaClean** is a cross-platform metadata inspection and sanitization toolkit for Android/Termux, Linux distributions and Windows. It includes a local dashboard and an optional private-LAN upload host.
 
-It inventories accessible shared storage, reports metadata found in supported files, and creates sanitized copies by default. Originals remain untouched unless the operator explicitly chooses replacement or deletion.
+It inventories accessible files, reports metadata in supported formats, and creates cleaned copies by default. Original files are preserved unless the operator explicitly enables replacement or the separate **Delete original after successful cleanup** option.
 
 ## Installation options (Termux)
 
@@ -70,6 +70,40 @@ metaclean logs     # follow the service log
 metaclean-setup    # rerun the installer/updater
 ```
 
+## Linux installation
+
+Supported package-manager families: APT, DNF, Pacman, Zypper, APK and XBPS. The installer provisions Python, ExifTool, FFmpeg, qpdf, a virtual environment and the global `metaclean` command. MAT2 is optional on Linux.
+
+Run from a cloned repository:
+
+```bash
+bash install-linux.sh
+```
+
+Or install directly without cloning:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/0xb0rn3/MetaClean/main/install-linux.sh | bash
+```
+
+Start with `metaclean`. The default file root is `~/MetaClean/Files`.
+
+## Windows installation
+
+Windows 10/11 with [Windows Package Manager (winget)](https://learn.microsoft.com/windows/package-manager/winget/) is required. Open PowerShell and run:
+
+```powershell
+irm https://raw.githubusercontent.com/0xb0rn3/MetaClean/main/install.ps1 | iex
+```
+
+The bootstrapper installs Python 3.12, FFmpeg, ExifTool and qpdf, creates a virtual environment, installs Python requirements, and adds `metaclean` to the user's PATH. Open a new PowerShell window and run:
+
+```powershell
+metaclean
+```
+
+The default file root is `%USERPROFILE%\\MetaClean\\Files`.
+
 ### Updating
 
 For a Git clone installation:
@@ -86,13 +120,16 @@ For a direct-curl or ZIP installation, download and extract the newest archive a
 ## Features
 
 - Recursive inventory of accessible regular files under `~/storage/shared`, including unsupported extensions.
-- Metadata inspection using ExifTool and MAT2 when available.
+- Metadata inspection using ExifTool and MAT2 when available (MAT2 is deliberately not installed or used by the Termux installer).
 - Image and video thumbnails, file filtering, progress tracking, and batch jobs.
 - **RUN ALL** scans storage and sanitizes supported originals into adjacent `.cleaned` copies.
+- Optional **Delete original after successful cleanup** removes a source only after its cleaned copy has been created successfully. It is off by default, works only in copy mode, and is not secure erasure.
+- Optional **Host for devices on your local network** turns the computer or Termux device into a processing server. Another device opens a generated link, uploads supported files, and downloads a ZIP cleaned by the host's CPU and installed tools.
+- Remote uploads and outputs use a temporary host directory and are removed when the download response closes. Remote source files are never written into the host's normal inventory and the source on the uploading device is not changed.
 - Optional monitoring detects new or changed supported files and sanitizes them into copies while the MetaClean service is running.
 - Optional replacement mode retains a backup before replacing an original.
 - Explicitly confirmed deletion; Termux:API notifications when the matching package and Android app are installed.
-- Local web server bound to `127.0.0.1`, with a per-process API token and Host-header validation.
+- Local dashboard protected by a per-process API token. LAN uploads are disabled until the host explicitly enables them and shares the generated access link.
 
 ## Smarter file discovery
 
@@ -117,7 +154,9 @@ Actual cleaning coverage depends on installed tools and each format's support. U
 ## Storage and privacy notes
 
 - Android's protected `Android/data` and `Android/obb` directories are excluded; ordinary Termux shared-storage permission does not grant access to them.
-- The server listens only on loopback. Do not change the bind address to expose it to an untrusted network.
+- The server's network listener is guarded: the normal dashboard and API remain loopback-only; the separate upload portal accepts private-LAN clients only while Host mode is enabled and only with its generated bearer link.
+- Host mode is intended for a trusted Wi-Fi/LAN. Do not port-forward TCP 5000 or expose the host to the public internet. Stop hosting to revoke the current link.
+- A remote upload is temporarily written to the host's system temp directory for processing and download. Normal completion removes the temporary workspace when the response closes; an abrupt power loss or process kill can interrupt that cleanup.
 - Automatic cleaning uses copy mode. Review outputs before sharing or deleting originals.
 - Metadata removal is format-specific. A clean verification scan is not proof that every possible embedded provenance structure has been removed.
 - MetaClean is **not** a secure-erasure tool. Flash storage wear levelling, snapshots, caches, and cloud backups prevent reliable forensic erasure through ordinary file deletion.
