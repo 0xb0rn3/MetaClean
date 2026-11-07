@@ -100,6 +100,17 @@ select{width:100%;padding:10px;border-radius:10px;border:1px solid var(--line);b
 .job li span{color:var(--muted);overflow-wrap:anywhere}
 .job li.good{border-left-color:var(--ok)}.job li.bad{border-left-color:var(--danger)}.job li.bad span{color:var(--danger)}
 .leftover{color:var(--warn);font-style:normal;display:block}.clear{color:var(--ok);font-style:normal;display:block}
+.duplicate-results{grid-column:1/-1;display:flex;flex-direction:column;gap:9px}
+.duplicate-summary{font-size:13px;color:var(--muted);padding:8px 0}
+.duplicate-group{border:1px solid var(--line);border-radius:10px;padding:10px;background:var(--panel2);min-width:0}
+.duplicate-group>div:first-child{font-weight:650;font-size:13px;margin-bottom:8px}
+.duplicate-files{display:flex;flex-direction:column;gap:7px}
+.duplicate-file{display:flex;align-items:flex-start;gap:8px;font-size:13px;min-width:0}
+.duplicate-file input{width:18px;height:18px;flex:none;accent-color:var(--accent);margin:2px 0 0}
+.duplicate-file span{min-width:0;overflow-wrap:anywhere}
+.duplicate-file small{display:block;color:var(--muted);font-size:11px}
+.duplicate-actions{display:flex;align-items:center;flex-wrap:wrap;gap:7px}
+.duplicate-pages{display:flex;align-items:center;justify-content:space-between;gap:8px;color:var(--muted);font-size:12px}
 dialog{width:100%;max-width:680px;max-height:92dvh;margin:auto 0 0;padding:0;border:1px solid var(--line);border-radius:18px 18px 0 0;background:var(--panel);color:var(--text);overflow:hidden}
 @media (min-width:700px){dialog{margin:auto;border-radius:18px}}
 dialog[open]{display:flex;flex-direction:column}
@@ -199,6 +210,27 @@ dialog::backdrop{background:rgba(5,8,12,.62)}
       <p class="hint" id="engineHint"></p>
       <p class="hint">When enabled, the original is deleted only after a cleaned copy has been created successfully. This cannot guarantee secure erasure on flash storage.</p>
     </details>
+    <details class="opts" id="duplicateOptions">
+      <summary>Find and remove duplicate files</summary>
+      <div class="optgrid">
+        <p class="hint">Finds exact byte-for-byte duplicates across the accessible storage folder using SHA-256. File names do not need to match. The scan does not change files; you choose which copy to keep before removal.</p>
+        <button class="btn primary" id="btnDuplicates" type="button">Scan for duplicates</button>
+        <div id="duplicateResults" class="duplicate-results" hidden>
+          <div class="duplicate-summary" id="duplicateSummary"></div>
+          <div id="duplicateGroups" class="duplicate-results"></div>
+          <div class="duplicate-pages">
+            <button class="btn ghost small" id="btnDupPrev" type="button">Previous</button>
+            <span id="duplicatePage"></span>
+            <button class="btn ghost small" id="btnDupNext" type="button">Next</button>
+          </div>
+          <div class="duplicate-actions">
+            <button class="btn danger" id="btnRemoveDuplicates" type="button" disabled>Remove extra copies on this page</button>
+            <button class="btn ghost" id="btnRescanDuplicates" type="button">Rescan</button>
+          </div>
+          <p class="hint">One selected keeper is retained in every group. Files are rechecked before deletion. Removal uses normal file deletion, not secure erasure.</p>
+        </div>
+      </div>
+    </details>
     <details class="opts" id="hostOptions">
       <summary>Host for devices on your local network</summary>
       <div class="optgrid">
@@ -286,6 +318,8 @@ dialog::backdrop{background:rgba(5,8,12,.62)}
   const S = { type: 'all', q: '', filter: 'all', sort: 'date', order: 'desc', items: [], total: 0, totalSize: 0, counts: {}, loading: false, done: false, pending: false, sel: new Map(), scannedAt: null };
   let status = null, lastJobs = [], autoScanned = false, curMeta = null, curTags = [], jobsKey = '', serverBanners = [];
   const seen = new Map(), dismissed = new Set(), openJobs = new Set(), clientBanners = new Map();
+  let duplicateJobId = '', duplicateOffset = 0, duplicateTotal = 0, duplicateFilesTotal = 0;
+  let duplicateWastedBytes = 0, duplicateGroups = [], duplicateKeepers = new Map();
 
   function fmtSize(n) {
     n = Number(n) || 0;
@@ -612,11 +646,106 @@ dialog::backdrop{background:rgba(5,8,12,.62)}
     } catch (e) { handleErr(e); }
   }
 
+  async function startDuplicateScan() {
+    try {
+      const d = await api('/api/duplicates', { include_hidden: prefs.hidden, notify: prefs.notify });
+      duplicateJobId = d.job_id;
+      duplicateOffset = 0;
+      duplicateTotal = 0;
+      duplicateFilesTotal = 0;
+      duplicateWastedBytes = 0;
+      duplicateGroups = [];
+      duplicateKeepers = new Map();
+      $('#duplicateResults').hidden = false;
+      $('#duplicateSummary').textContent = 'Scanning files and comparing exact file hashes…';
+      $('#duplicateGroups').innerHTML = '';
+      $('#btnRemoveDuplicates').disabled = true;
+      toast(d.reused ? 'Duplicate scan already running' : 'Duplicate scan started');
+      pollJobs();
+    } catch (e) { handleErr(e); }
+  }
+
+  async function loadDuplicatePage(jobId, offset) {
+    const d = await api('/api/duplicates/' + encodeURIComponent(jobId) + '?offset=' + offset + '&limit=20');
+    duplicateJobId = jobId;
+    duplicateOffset = d.offset;
+    duplicateTotal = d.total_groups;
+    duplicateFilesTotal = d.total_files;
+    duplicateWastedBytes = d.wasted_bytes;
+    duplicateGroups = d.groups || [];
+    duplicateGroups.forEach((group) => {
+      if (!duplicateKeepers.has(group.hash)) duplicateKeepers.set(group.hash, group.files[0].rel);
+    });
+    renderDuplicatePage();
+  }
+
+  function renderDuplicatePage() {
+    const panel = $('#duplicateResults');
+    panel.hidden = false;
+    if (!duplicateTotal) {
+      $('#duplicateSummary').textContent = 'No exact duplicate files were found. The scan did not change any files.';
+      $('#duplicateGroups').innerHTML = '';
+      $('#duplicatePage').textContent = '0 groups';
+      $('#btnDupPrev').disabled = true;
+      $('#btnDupNext').disabled = true;
+      $('#btnRemoveDuplicates').disabled = true;
+      return;
+    }
+    $('#duplicateSummary').textContent =
+      duplicateTotal.toLocaleString() + ' duplicate groups · ' +
+      duplicateFilesTotal.toLocaleString() + ' files · ' + fmtSize(duplicateWastedBytes) +
+      ' potentially reclaimable by keeping one file in each group.';
+    $('#duplicateGroups').innerHTML = duplicateGroups.map((group, index) => {
+      const heading = 'Group ' + (duplicateOffset + index + 1) + ' · ' +
+        group.copies + ' identical copies · ' + fmtSize(group.size) + ' each · ' +
+        fmtSize(group.wasted_bytes) + ' extra';
+      const files = group.files.map((file) => {
+        const chosen = duplicateKeepers.get(group.hash) === file.rel;
+        return '<label class="duplicate-file"><input type="radio" name="keep-' + group.hash +
+          '" data-dupe-keep="' + group.hash + '" value="' + esc(file.rel) + '"' +
+          (chosen ? ' checked' : '') + '><span>Keep this copy: <b>' + esc(file.name) +
+          '</b><small>' + esc(file.rel) + '</small></span></label>';
+      }).join('');
+      return '<section class="duplicate-group"><div>' + esc(heading) +
+        '</div><div class="duplicate-files">' + files + '</div></section>';
+    }).join('');
+    const first = duplicateOffset + 1;
+    const last = duplicateOffset + duplicateGroups.length;
+    $('#duplicatePage').textContent = first + '–' + last + ' of ' + duplicateTotal + ' groups';
+    $('#btnDupPrev').disabled = duplicateOffset <= 0;
+    $('#btnDupNext').disabled = last >= duplicateTotal;
+    $('#btnRemoveDuplicates').disabled = duplicateGroups.length === 0;
+    $('#btnRemoveDuplicates').textContent = 'Remove extra copies in these ' + duplicateGroups.length + ' groups';
+  }
+
+  async function removeDuplicateCopies() {
+    if (!duplicateJobId || !duplicateGroups.length) return;
+    const count = duplicateGroups.reduce((sum, group) => sum + group.copies - 1, 0);
+    const size = duplicateGroups.reduce((sum, group) => sum + group.wasted_bytes, 0);
+    if (!confirm('Delete ' + count + ' duplicate copies from the ' + duplicateGroups.length +
+      ' groups currently displayed? One selected copy per group will be kept. Up to ' +
+      fmtSize(size) + ' may be reclaimed. This is normal deletion, not secure erasure.')) return;
+    const keepers = duplicateGroups.map((group) => ({
+      hash: group.hash,
+      keep: duplicateKeepers.get(group.hash) || group.files[0].rel
+    }));
+    try {
+      await api('/api/duplicates/' + encodeURIComponent(duplicateJobId) + '/remove', {
+        confirm: true, keepers
+      });
+      $('#duplicateSummary').textContent = 'Duplicate removal started. The files are being rechecked before deletion.';
+      $('#btnRemoveDuplicates').disabled = true;
+      toast('Duplicate removal started');
+      pollJobs();
+    } catch (e) { handleErr(e); }
+  }
+
   function resultLine(j, r) {
     const nm = esc(r.rel.split('/').pop());
     if (r.status === 'error') return '<li class="bad"><b>' + nm + '</b><span>' + esc(r.message) + '</span></li>';
     if (r.status === 'skipped') return '<li><b>' + nm + '</b><span>' + esc(r.message) + '</span></li>';
     if (j.kind === 'delete') return '<li class="good"><b>' + nm + '</b><span>Deleted, freed ' + fmtSize(r.before) + '</span></li>';
+    if (j.kind === 'duplicate-delete') return '<li class="' + (r.status === 'ok' ? 'good' : 'bad') + '"><b>' + nm + '</b><span>' + esc(r.message || 'Duplicate copy removed.') + (r.before ? ' · freed ' + fmtSize(r.before) : '') + '</span></li>';
     let t = fmtSize(r.before) + ' became ' + fmtSize(r.after) + ' using ' + esc(r.engines.join(' + '));
     if (r.output && r.output !== r.rel) t += '<br>Saved as ' + esc(r.output.split('/').pop());
     if (r.original_deleted) t += '<br>Original deleted after successful cleanup';
@@ -628,11 +757,12 @@ dialog::backdrop{background:rgba(5,8,12,.62)}
 
   function jobHtml(j) {
     const fin = FINAL.includes(j.status);
-    const title = { scan: 'Scanning storage', clean: 'Cleaning metadata', delete: 'Deleting files' }[j.kind] || j.kind;
-    const indet = j.kind === 'scan' && !fin;
-    const pct = j.kind === 'scan' ? (fin ? 100 : 0) : (j.total ? Math.round(j.done / j.total * 100) : 0);
+    const title = { scan: 'Scanning storage', 'duplicate-scan': 'Scanning for exact duplicates', 'duplicate-delete': 'Removing duplicate copies', clean: 'Cleaning metadata', delete: 'Deleting files' }[j.kind] || j.kind;
+    const indet = (j.kind === 'scan' || (j.kind === 'duplicate-scan' && !j.total)) && !fin;
+    const pct = (j.kind === 'scan' || j.kind === 'duplicate-scan') ? (fin ? 100 : (j.total ? Math.round(j.done / j.total * 100) : 0)) : (j.total ? Math.round(j.done / j.total * 100) : 0);
     let line;
     if (j.kind === 'scan') line = j.found.toLocaleString() + ' files found in ' + j.folders.toLocaleString() + ' folders' + (j.skipped_dirs ? ', ' + j.skipped_dirs + ' unreadable' : '');
+    else if (j.kind === 'duplicate-scan') line = j.found.toLocaleString() + ' files discovered · ' + j.done.toLocaleString() + ' of ' + j.total.toLocaleString() + ' same-size candidates hashed' + (j.current ? ', ' + j.current.split('/').pop() : '');
     else line = j.done + ' of ' + j.total + (j.failed ? ', ' + j.failed + ' failed' : '') + (j.current ? ', ' + j.current.split('/').pop() : '');
     let act = '';
     if (!fin) act = '<button class="btn ghost small" data-cancel="' + j.id + '" type="button">Cancel</button>';
@@ -656,6 +786,22 @@ dialog::backdrop{background:rgba(5,8,12,.62)}
   }
 
   function onFinished(j) {
+    if (j.kind === 'duplicate-scan') {
+      toast(j.message || 'Duplicate scan ' + j.status, j.status === 'failed' ? 'err' : '');
+      if (j.status === 'done') {
+        duplicateKeepers = new Map();
+        loadDuplicatePage(j.id, 0).catch((e) => handleErr(e));
+      }
+      return;
+    }
+    if (j.kind === 'duplicate-delete') {
+      toast(j.message || 'Duplicate removal ' + j.status, j.status === 'failed' ? 'err' : '');
+      $('#duplicateSummary').textContent = (j.message || 'Duplicate removal finished.') + ' Run another scan to refresh the report.';
+      $('#btnRemoveDuplicates').disabled = true;
+      loadList(true);
+      refreshStatus();
+      return;
+    }
     if (j.kind === 'scan') toast(j.status === 'done' ? j.message : (j.message || 'Scan ' + j.status), j.status === 'failed' ? 'err' : '');
     else toast(j.message || 'Job ' + j.status, j.status === 'failed' ? 'err' : '');
     loadList(true);
@@ -677,9 +823,12 @@ dialog::backdrop{background:rgba(5,8,12,.62)}
       });
       $('#btnScan').disabled = scanning;
       const runningAll = d.jobs.some((j) => j.kind === 'run-all' && !FINAL.includes(j.status));
+      const duplicateScanning = d.jobs.some((j) => j.kind === 'duplicate-scan' && !FINAL.includes(j.status));
       $('#btnRun').disabled = runningAll;
       $('#btnRun').textContent = runningAll ? 'RUNNING…' : 'RUN ALL';
       $('#btnScan').textContent = scanning ? 'Scanning' : 'Scan storage';
+      $('#btnDuplicates').disabled = duplicateScanning;
+      $('#btnDuplicates').textContent = duplicateScanning ? 'Scanning duplicates…' : 'Scan for duplicates';
       renderJobs();
     } catch (e) { handleErr(e, true); }
   }
@@ -777,6 +926,15 @@ dialog::backdrop{background:rgba(5,8,12,.62)}
     grid.addEventListener('error', (e) => { if (e.target.tagName === 'IMG') e.target.remove(); }, true);
 
     $('#btnScan').addEventListener('click', startScan);
+    $('#btnDuplicates').addEventListener('click', startDuplicateScan);
+    $('#btnRescanDuplicates').addEventListener('click', startDuplicateScan);
+    $('#btnRemoveDuplicates').addEventListener('click', removeDuplicateCopies);
+    $('#btnDupPrev').addEventListener('click', () => loadDuplicatePage(duplicateJobId, Math.max(0, duplicateOffset - 20)).catch((e) => handleErr(e)));
+    $('#btnDupNext').addEventListener('click', () => loadDuplicatePage(duplicateJobId, duplicateOffset + 20).catch((e) => handleErr(e)));
+    $('#duplicateGroups').addEventListener('change', (e) => {
+      if (!e.target.matches('[data-dupe-keep]')) return;
+      duplicateKeepers.set(e.target.dataset.dupeKeep, e.target.value);
+    });
     $('#btnRun').addEventListener('click', startRunAll);
     $('#btnAll').addEventListener('click', selectAll);
     $('#barClear').addEventListener('click', clearSel);
