@@ -92,7 +92,7 @@ app.json.sort_keys = False
 app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_BYTES
 POOL = ThreadPoolExecutor(max_workers=3, thread_name_prefix="job")
 CLEAN_LOCK = threading.Lock()
-HOSTING = {"enabled": False, "token": ""}
+HOSTING = {"enabled": False, "token": "", "wake_lock": None}
 HOSTING_LOCK = threading.RLock()
 
 
@@ -1124,8 +1124,37 @@ def index():
     return render_template("index.html", token=TOKEN)
 
 
-def lan_ipv4_addresses():
+def interface_ipv4_addresses():
+    """Read IPv4 addresses from active interfaces; useful where Android hostname DNS is limited."""
+    if not sys.platform.startswith("linux"):
+        return set()
+    try:
+        import fcntl
+        import struct
+        interfaces = socket.if_nameindex()
+    except (ImportError, OSError, AttributeError):
+        return set()
+
     found = set()
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:
+            for _index, name in interfaces:
+                try:
+                    request = struct.pack("256s", name.encode("utf-8")[:15])
+                    result = fcntl.ioctl(probe.fileno(), 0x8915, request)  # SIOCGIFADDR
+                    ip = socket.inet_ntoa(result[20:24])
+                    address = ipaddress.ip_address(ip)
+                    if address.is_private and not address.is_loopback and not address.is_link_local:
+                        found.add(ip)
+                except (OSError, ValueError, UnicodeError):
+                    continue
+    except OSError:
+        pass
+    return found
+
+
+def lan_ipv4_addresses():
+    found = interface_ipv4_addresses()
     try:
         for item in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET):
             ip = item[4][0]
@@ -1149,12 +1178,55 @@ def lan_ipv4_addresses():
     return sorted(found)
 
 
+def set_termux_wake_lock(enabled):
+    """Request/release Android's Termux wake lock without making it a host-mode dependency."""
+    if not IS_TERMUX:
+        return None
+    command = "termux-wake-lock" if enabled else "termux-wake-unlock"
+    executable = shutil.which(command)
+    if not executable:
+        return {
+            "ok": False,
+            "message": (
+                "Termux:API command is unavailable. Install the Termux:API package and "
+                "the matching Termux:API Android app. Keep Termux in the foreground while hosting."
+            ),
+        }
+    try:
+        proc = subprocess.run(
+            [executable], capture_output=True, encoding="utf-8", errors="replace", timeout=20
+        )
+    except subprocess.TimeoutExpired:
+        return {"ok": False, "message": f"{command} timed out; check the Termux:API app."}
+    except OSError as exc:
+        return {"ok": False, "message": f"{command} could not start: {exc}"}
+    if proc.returncode != 0:
+        detail = tail(proc.stderr or proc.stdout, 180)
+        return {
+            "ok": False,
+            "message": detail or f"{command} failed. Check that the Termux:API app is installed and matches the Termux installation source.",
+        }
+    return {
+        "ok": True,
+        "message": (
+            "Android wake lock is active while LAN hosting is enabled. This can increase battery use."
+            if enabled else "Android wake lock released."
+        ),
+    }
+
+
 def host_status():
     with HOSTING_LOCK:
         enabled = HOSTING["enabled"]
         key = HOSTING["token"]
+        wake_lock = HOSTING.get("wake_lock")
     urls = [f"http://{ip}:{PORT}/remote?access={key}" for ip in lan_ipv4_addresses()] if enabled else []
-    return {"enabled": enabled, "urls": urls, "scope": "private local network only"}
+    return {
+        "enabled": enabled,
+        "urls": urls,
+        "scope": "private local network only",
+        "wake_lock": wake_lock if IS_TERMUX else None,
+    }
 
 
 def cleanup_stale_remote_temp():
@@ -1593,6 +1665,12 @@ def api_host():
         else:
             HOSTING["enabled"] = False
             HOSTING["token"] = ""
+
+    # Android can suspend background work when the screen turns off. Request
+    # Termux's wake lock only for the period in which the user has opted into hosting.
+    wake_lock = set_termux_wake_lock(enabled) if IS_TERMUX else None
+    with HOSTING_LOCK:
+        HOSTING["wake_lock"] = wake_lock
     return jsonify(host=host_status())
 
 
@@ -1653,6 +1731,9 @@ def main():
     os.makedirs(DATA_DIR, exist_ok=True)
     os.makedirs(ROOT, exist_ok=True)
     os.makedirs(WORK_BASE, exist_ok=True)
+    # Hosting is always off after a process restart; clear any stale Android lock.
+    if IS_TERMUX:
+        set_termux_wake_lock(False)
     cleanup_stale_remote_temp()
     found = tools(force=True)
     try:
