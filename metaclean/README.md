@@ -2,14 +2,68 @@
 
 MetaClean is a localhost-only Flask dashboard for inventorying shared Android storage, inspecting metadata, and cleaning supported files into separate `.cleaned` copies.
 
-## Install
+## Installation options
 
-1. Extract this directory somewhere in Termux home storage.
-2. Run `bash setup.sh`.
-3. Grant Android storage permission when prompted.
-4. Run `metaclean` from any working directory. It starts the local service and opens `http://127.0.0.1:5000`.
+Run these commands inside **Termux**. Choose one method.
 
-Commands: `metaclean`, `metaclean open`, `metaclean status`, `metaclean stop`, `metaclean restart`, and `metaclean logs`. To update the installed copy after changing source files, rerun `bash setup.sh` from the updated project directory.
+### Option 1 — Git clone (recommended)
+
+```bash
+pkg update -y
+pkg install git -y
+git clone https://github.com/0xb0rn3/MetaClean.git
+cd MetaClean/metaclean
+bash setup.sh
+```
+
+### Option 2 — Direct curl (no Git required)
+
+Downloads the current main-branch archive, extracts the runnable application files to `~/MetaClean`, and installs:
+
+```bash
+pkg update -y
+pkg install curl tar -y
+mkdir -p "$HOME/MetaClean"
+cd "$HOME/MetaClean"
+curl -fL https://github.com/0xb0rn3/MetaClean/archive/refs/heads/main.tar.gz -o metaclean.tar.gz
+tar -xzf metaclean.tar.gz --strip-components=2 MetaClean-main/metaclean
+rm metaclean.tar.gz
+bash setup.sh
+```
+
+### Option 3 — GitHub ZIP
+
+1. Download the ZIP from [github.com/0xb0rn3/MetaClean](https://github.com/0xb0rn3/MetaClean) using **Code → Download ZIP**.
+2. Extract it in Termux.
+3. Enter the extracted `MetaClean-main/metaclean/` directory.
+4. Run `bash setup.sh`.
+
+## Complete setup
+
+Grant shared-storage permission when Android prompts you. Setup installs required packages and Python dependencies and creates the global `metaclean` command.
+
+Start from any directory:
+
+```bash
+metaclean
+```
+
+Then open [http://127.0.0.1:5000](http://127.0.0.1:5000).
+
+Commands: `metaclean`, `metaclean open`, `metaclean status`, `metaclean stop`, `metaclean restart`, and `metaclean logs`. Run `metaclean-setup` to rerun the installer/updater.
+
+## Updating
+
+For Git clone installations:
+
+```bash
+cd ~/MetaClean
+git pull
+cd metaclean
+bash setup.sh
+```
+
+For curl or ZIP installations, extract the latest project files again and rerun `bash setup.sh` from the updated project directory.
 
 ## Workflow
 
