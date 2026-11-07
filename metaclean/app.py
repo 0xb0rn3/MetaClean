@@ -1026,7 +1026,6 @@ def make_thumb(full, ftype):
 
 # ---------------------------------------------------------------- request guards
 
-@app.before_request
 def valid_host_header():
     try:
         hostname = urlsplit("//" + (request.host or "")).hostname
@@ -1075,6 +1074,11 @@ def guard():
         if request.method == "POST" and not request.is_json:
             return jsonify(error="bad_content_type", message="Expected application/json."), 415
     return None
+
+
+@app.before_request
+def register_request_guard():
+    return guard()
 
 
 @app.after_request
