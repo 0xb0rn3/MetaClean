@@ -94,6 +94,15 @@ For a direct-curl or ZIP installation, download and extract the newest archive a
 - Explicitly confirmed deletion; Termux:API notifications when the matching package and Android app are installed.
 - Local web server bound to `127.0.0.1`, with a per-process API token and Host-header validation.
 
+## Smarter file discovery
+
+The main **Media & docs** view prioritises recognised user content instead of filling the dashboard with miscellaneous app and system files. Detection covers common photos and camera RAW formats, video containers, audio formats, and office/document formats, including formats that are view-only.
+
+- **Other files** remains available as a separate tab for unrecognised file types.
+- Obvious clutter is excluded from inventory: cache/thumbnail/temp folders, `.nomedia`, OS housekeeping files, and incomplete download/temp/lock/log files.
+- Detection is broader than cleaning support. Files labelled **view only** can be browsed but cannot be selected for batch cleaning unless a safe cleaner is registered.
+- RUN ALL and automatic monitoring still operate only on the existing safe-cleaner registry. Detecting a file does not make it eligible for cleaning.
+
 ## Supported formats
 
 | Kind | Extensions |
