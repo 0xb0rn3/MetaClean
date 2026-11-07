@@ -88,6 +88,16 @@ curl -fsSL https://raw.githubusercontent.com/0xb0rn3/MetaClean/main/install-linu
 
 Start with `metaclean`. The default file root is `~/MetaClean/Files`.
 
+## Automatic Termux/Linux installer
+
+A single Unix bootstrapper detects Termux or a standard Linux distribution and starts the matching setup:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/0xb0rn3/MetaClean/main/install.sh | bash
+```
+
+Use the Windows PowerShell command in the Windows section above on Windows.
+
 ## Windows installation
 
 Windows 10/11 with [Windows Package Manager (winget)](https://learn.microsoft.com/windows/package-manager/winget/) is required. Open PowerShell and run:
@@ -102,7 +112,7 @@ The bootstrapper installs Python 3.12, FFmpeg, ExifTool and qpdf, creates a virt
 metaclean
 ```
 
-The default file root is `%USERPROFILE%\\MetaClean\\Files`.
+The default file root is `%USERPROFILE%\MetaClean\Files`.
 
 ### Updating
 
@@ -120,7 +130,7 @@ For a direct-curl or ZIP installation, download and extract the newest archive a
 ## Features
 
 - Recursive inventory of accessible regular files under `~/storage/shared`, including unsupported extensions.
-- Metadata inspection using ExifTool and MAT2 when available (MAT2 is deliberately not installed or used by the Termux installer).
+- Metadata inspection using ExifTool and MAT2 when available. Termux deliberately skips MAT2 and uses ExifTool, FFmpeg and built-in document fallbacks.
 - Image and video thumbnails, file filtering, progress tracking, and batch jobs.
 - **RUN ALL** scans storage and sanitizes supported originals into adjacent `.cleaned` copies.
 - Optional **Delete original after successful cleanup** removes a source only after its cleaned copy has been created successfully. It is off by default, works only in copy mode, and is not secure erasure.
